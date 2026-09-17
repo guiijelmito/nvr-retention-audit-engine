@@ -1,0 +1,30 @@
+# Ambientes Virtuais e Python Cache
+venv/
+env/
+ENV/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# Configurações e Credenciais Sensíveis (CRÍTICO)
+config.py
+credenciais.json
+escolas.json
+
+# Logs e Pastas de Evidências Locais (Prints do Playwright)
+#*.log
+Evidencias_NVR_escolas/
+Evidencias_OS/
+
+# Arquivos de Sistema Operacional
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores de Código e IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
