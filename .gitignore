@@ -1,7 +1,7 @@
 # Ambientes Virtuais e Python Cache
-venv/
-env/
-ENV/
+#venv/
+#env/
+#ENV/
 __pycache__/
 *.pyc
 *.pyo
