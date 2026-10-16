@@ -69,6 +69,42 @@ class NvrAuditRetryTests(unittest.TestCase):
         self.assertEqual(self.session.get.call_count, 8)
 
     @patch.object(nvr_audit.time, "sleep")
+    def test_legacy_http400_search_is_empty_only_if_findnext_confirms_it(self, sleep):
+        empty_search = [
+            FakeResponse("result=token-1\n"),
+            FakeResponse("Bad Request", status_code=400),
+            FakeResponse("found=0\n"),
+            FakeResponse("OK\n"),
+        ]
+        self.session.get.side_effect = [*empty_search, *empty_search]
+
+        result = nvr_audit._consultar_dia(
+            self.session, self.base_url, 1, "2026-01-01", "Escola antiga"
+        )
+
+        self.assertIs(result, False)
+        sleep.assert_not_called()
+        self.assertEqual(self.session.get.call_count, 8)
+
+    @patch.object(nvr_audit.time, "sleep")
+    def test_http400_with_invalid_findnext_does_not_become_empty(self, sleep):
+        failed_search = [
+            FakeResponse("result=token-1\n"),
+            FakeResponse("Bad Request", status_code=400),
+            FakeResponse("Error: invalid finder"),
+            FakeResponse("OK\n"),
+        ]
+        self.session.get.side_effect = failed_search * nvr_audit.TENTATIVAS_API
+
+        result = nvr_audit._consultar_dia(
+            self.session, self.base_url, 1, "2026-01-01", "Escola antiga"
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(self.session.get.call_count, 4 * nvr_audit.TENTATIVAS_API)
+        self.assertEqual(sleep.call_count, nvr_audit.TENTATIVAS_API - 1)
+
+    @patch.object(nvr_audit.time, "sleep")
     def test_confirmation_network_error_retries_pair_instead_of_counting_empty(self, sleep):
         self.session.get.side_effect = [
             *search_responses("found=0\n"),

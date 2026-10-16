@@ -75,9 +75,18 @@ def _com_retentativas(acao: Callable[[], T], contexto: str) -> T | None:
     return None
 
 
-def _get_cgi(sessao: requests.Session, url: str):
+def _get_cgi(
+    sessao: requests.Session,
+    url: str,
+    *,
+    aceitar_http_400: bool = False,
+):
     resposta = sessao.get(url, timeout=TIMEOUT_API)
-    resposta.raise_for_status()
+    # Firmwares Dahua antigos podem responder HTTP 400 ao iniciar uma busca
+    # sem correspondências. Nesses casos, findNextFile em um token novo é a
+    # fonte autoritativa: só um corpo válido `found=0` pode confirmar dia vazio.
+    if not (aceitar_http_400 and resposta.status_code == 400):
+        resposta.raise_for_status()
     return resposta
 
 
@@ -127,7 +136,7 @@ def _consultar_dia_uma_vez(
             f"&condition.EndTime={data_str}%2023:59:59"
             "&condition.Types[0]=dav"
         )
-        _get_cgi(sessao, url_buscar)
+        _get_cgi(sessao, url_buscar, aceitar_http_400=True)
         resposta = _get_cgi(
             sessao,
             f"{url_base}?action=findNextFile&object={token}&count=1",
