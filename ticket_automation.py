@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
 import os
-from dotenv import load_dotenv
 from playwright.sync_api import sync_playwright
 from config import logger
 
@@ -12,8 +11,6 @@ from config import (
     SOLICITANTE_7LAN as solicitante,
 )
 
-load_dotenv()
-
 def criar_ticket_7lan(nome_escola):
   """Função principal de automação de tickets no 7LAN para auditoria NVR.
 
@@ -22,7 +19,12 @@ def criar_ticket_7lan(nome_escola):
   anexo de evidências, apontamentos e fechamento do chamado.
   """
   with sync_playwright() as p:
-    browser = p.chromium.launch(headless=False)  # Mude para True se preferir rodar em segundo plano no futuro
+    # Em container/servidor não há desktop para o Chromium abrir uma janela.
+    # Mantém o comportamento visível local por padrão e permite headless por env.
+    headless = os.getenv("PLAYWRIGHT_HEADLESS", "false").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+    browser = p.chromium.launch(headless=headless)
     context = browser.new_context()
     page = context.new_page()
 

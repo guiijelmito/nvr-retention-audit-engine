@@ -1,0 +1,20 @@
+services:
+  auditor:
+    image: verth-nvr-audit:local
+    build:
+      context: .
+      args:
+        PLAYWRIGHT_VERSION: "1.63.0"
+    env_file:
+      - .env
+    environment:
+      PASTA_EVIDENCIAS: /data/evidencias
+      PLAYWRIGHT_HEADLESS: "true"
+    volumes:
+      - ./escolas.json:/app/escolas.json:ro
+      - ./credenciais.json:/app/credenciais.json:ro
+      - ./logs:/app/logs
+      - ./Evidencias_NVR_escolas:/data/evidencias
+    init: true
+    shm_size: 1gb
+    command: ["python", "main.py"]

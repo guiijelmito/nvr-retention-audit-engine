@@ -60,9 +60,9 @@ ESCOPOS = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-ARQUIVO_ESCOLAS = BASE_DIR / "escolas_teste.json"
+ARQUIVO_ESCOLAS = BASE_DIR / "escolas.json"
 if ARQUIVO_ESCOLAS.exists():
     with open(ARQUIVO_ESCOLAS, "r", encoding="utf-8") as f:
         ESCOLAS = json.load(f)
 else:
-    ESCOLAS_TESTE= {}
+    ESCOLAS = {}

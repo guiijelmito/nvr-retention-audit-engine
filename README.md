@@ -86,6 +86,79 @@ Run the full audit pipeline:
 python main.py
 ```
 
+## Executar com Docker (Windows)
+
+Docker empacota Python, bibliotecas e Chromium para que a aplicação não dependa de uma instalação local de Python. **O PC ainda precisa de um runtime Docker instalado e iniciado.** No Windows, Docker Desktop normalmente usa WSL 2; habilitar esse recurso pela primeira vez pode exigir privilégios administrativos e reinicialização. Portanto, Docker não elimina essa necessidade no PC da GCM que está sem WSL e não pode reiniciar agora. Consulte os requisitos atuais na [documentação do Docker Desktop para Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
+
+### Preparar o computador
+
+Instale e inicie o Docker Desktop em um computador Windows compatível. Abra o PowerShell na pasta do projeto e confirme que o mecanismo está ativo:
+
+```powershell
+docker version
+docker compose version
+```
+
+Se o comando `docker version` mostrar apenas a parte Client e erro na parte Server, o Docker Desktop ainda não está iniciado ou o mecanismo não está disponível.
+
+### Preparar os arquivos locais
+
+O container não inclui dados locais nem segredos na imagem. Antes de executar, mantenha na raiz do projeto:
+
+- `.env` com credenciais dos NVRs, 7LAN e demais integrações;
+- `escolas.json` com o mapa de unidades e IPs;
+- `credenciais.json` com a conta de serviço do Google Sheets, se a sincronização estiver habilitada.
+
+Crie as pastas `logs` e `Evidencias_NVR_escolas` se ainda não existirem. O Compose monta os arquivos de configuração como somente leitura e persiste logs e evidências no computador host.
+
+### Construir e executar
+
+Na primeira execução, o Docker baixa a imagem Python e instala as dependências do Chromium; isso exige acesso à internet e pode levar alguns minutos. Depois, execute:
+
+```powershell
+docker compose run --build --rm auditor
+```
+
+`run` executa a auditoria uma vez, `--rm` remove o container ao final e `--build` reconstrói a imagem quando necessário. Os resultados ficam em `logs` e `Evidencias_NVR_escolas` no host. O container usa Chromium headless para a automação do 7LAN.
+
+Para apenas reconstruir sem iniciar uma auditoria:
+
+```powershell
+docker compose build
+```
+
+Para inventariar modelos e firmwares:
+
+```powershell
+docker compose run --build --rm auditor python inventario_nvr.py
+```
+
+### Manutenção da imagem
+
+- Ao mudar dependências, atualize `requirements.txt` e reconstrua com `docker compose build --no-cache`.
+- Ao atualizar Playwright, mantenha a versão em `Dockerfile`/`compose.yaml` alinhada e reconstrua. A versão do Playwright deve combinar com os binários de navegador instalados na imagem, conforme a [documentação do Playwright para Docker](https://playwright.dev/python/docs/docker).
+- Mudanças no código Python entram na imagem na próxima construção; use `docker compose run --build --rm auditor` para executar a versão atual.
+- Para inspecionar logs: `Get-Content .\logs\auditoria_NVR_escolas.log -Tail 100`.
+- Para remover containers parados: `docker compose down`. Para também apagar resultados locais, remova manualmente as pastas de logs/evidências depois de guardar o que precisar.
+
+### Levar a imagem para outro computador
+
+É possível construir em uma máquina com internet e transferir a imagem:
+
+```powershell
+docker compose build
+docker save -o verth-nvr-audit.tar verth-nvr-audit:local
+```
+
+Copie `verth-nvr-audit.tar` para o computador de destino e, nele, carregue e execute:
+
+```powershell
+docker load -i verth-nvr-audit.tar
+docker compose run --no-build --rm auditor
+```
+
+O computador de destino ainda precisa do Docker Engine/Desktop, dos arquivos locais de configuração e acesso de rede aos NVRs. Para a estação da GCM sem Docker/WSL e sem possibilidade de reinicialização, use temporariamente outra máquina já preparada ou aguarde a instalação do runtime; a imagem sozinha não roda diretamente no Windows.
+
 ---
 
 ## Project Structure
@@ -96,6 +169,10 @@ python main.py
 ├── nvr_capture.py           # Playwright module for GUI interaction and evidence screenshots
 ├── cloud_sync.py             # Google Sheets synchronization and report updating
 ├── ticket_automation.py       # 7LAN service desk ticket automation
+├── inventario_nvr.py          # Inventário de modelo e firmware Dahua
+├── Dockerfile                 # Imagem portátil da aplicação e do Chromium
+├── compose.yaml               # Execução com configuração e dados persistidos
+├── .dockerignore              # Evita enviar segredos/dados locais ao build
 ├── config.py                   # Environment loading, path resolution, and logging setup
 ├── escolas.json                 # School units and NVR IP mapping (git-ignored)
 ├── credenciais.json              # Google service account credentials (git-ignored)

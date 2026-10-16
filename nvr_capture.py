@@ -2,7 +2,6 @@ from datetime import datetime
 import os
 from playwright.sync_api import sync_playwright
 from config import USUARIO, SENHA, logger, PASTA_EVIDENCIAS as pasta_destino
-from ticket_automation import criar_ticket_7lan
 
 def capturar_print_nvr(ip_nvr, nome_escola, ano_alvo, mes_num):
     with sync_playwright() as p:

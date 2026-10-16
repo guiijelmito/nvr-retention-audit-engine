@@ -3,7 +3,7 @@ import os
 import time
 from requests.auth import HTTPDigestAuth
 import requests
-from config import USUARIO, SENHA, ESCOLAS_TESTE, logger
+from config import USUARIO, SENHA, ESCOLAS, logger
 from nvr_capture import capturar_print_nvr
 from cloud_sync import enviar_para_google_sheets
 from ticket_automation import criar_ticket_7lan
@@ -22,7 +22,7 @@ def auditar_retencao_nvr_com_cloud():
     qtd_canais = 1
     resultados_para_planilha = []
 
-    for nome_escola, nvr_ip in ESCOLAS_TESTE.items():
+    for nome_escola, nvr_ip in ESCOLAS.items():
         logger.info(f"[UNIDADE] Processando unidade: {nome_escola} - Endereço IP: ({nvr_ip})")
         total_dias_escola = 0
 
