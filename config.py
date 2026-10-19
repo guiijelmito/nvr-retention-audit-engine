@@ -50,7 +50,12 @@ URL_7LAN = os.getenv("LAN7_URL")
 CLIENTE_7LAN = os.getenv("LAN7_CLIENTE")
 SOLICITANTE_7LAN = os.getenv("LAN7_SOLICITANTE")
 
-ARQUIVO_CREDENCIAIS = BASE_DIR / "credenciais.json"
+_credenciais_google_configuradas = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+ARQUIVO_CREDENCIAIS = (
+    Path(_credenciais_google_configuradas).expanduser()
+    if _credenciais_google_configuradas
+    else BASE_DIR / "credenciais.json"
+)
 NOME_PLANILHA = "Gravações escolas 2026"
 NOME_ABA = "Gravações Quinzenais 2026"
 PASTA_EVIDENCIAS = os.getenv("PASTA_EVIDENCIAS")
@@ -60,9 +65,19 @@ ESCOPOS = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-ARQUIVO_ESCOLAS = BASE_DIR / "escolas.json"
+ARQUIVO_ESCOLAS = BASE_DIR / "data" / "escolas.json"
 if ARQUIVO_ESCOLAS.exists():
     with open(ARQUIVO_ESCOLAS, "r", encoding="utf-8") as f:
-        ESCOLAS = json.load(f)
+        DADOS_ESCOLAS = json.load(f)
 else:
-    ESCOLAS = {}
+    DADOS_ESCOLAS = {}
+
+# Mantém compatibilidade com o formato legado {"nome": "ip"} e também lê
+# unidades com estado persistido no formato {"nome": {"ip": ..., ...}}.
+ESCOLAS = {}
+for nome_escola, dados_escola in DADOS_ESCOLAS.items():
+    ip_nvr = dados_escola.get("ip") if isinstance(dados_escola, dict) else dados_escola
+    if isinstance(ip_nvr, str) and ip_nvr.strip():
+        ESCOLAS[nome_escola] = ip_nvr
+    else:
+        logger.warning("[CONFIG] Unidade ignorada por não possuir IP válido: %s", nome_escola)

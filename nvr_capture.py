@@ -4,11 +4,11 @@ from playwright.sync_api import sync_playwright
 from config import USUARIO, SENHA, logger, PASTA_EVIDENCIAS as pasta_destino
 
 def capturar_print_nvr(ip_nvr, nome_escola, ano_alvo, mes_num):
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
-        
-        try:
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+
             logger.info(f"[PLAYWRIGHT] Acessando http://{ip_nvr}...")
             page.goto(f"http://{ip_nvr}", timeout=60000)
             
@@ -81,9 +81,8 @@ def capturar_print_nvr(ip_nvr, nome_escola, ano_alvo, mes_num):
             nome_arquivo = os.path.join(pasta_destino, f"{nome_limpo}_{data_str}.png")
             page.screenshot(path=nome_arquivo, full_page=True)
             logger.info(f"[PLAYWRIGHT] Print do calendário mensal capturado com sucesso: {nome_arquivo}")
-            
-        except Exception as e:
-            logger.error(f"[PLAYWRIGHT ERRO] Erro ao automatizar o NVR {ip_nvr}: {str(e)}")
-            return None  # <--- Retorna None caso dê erro de acesso/timeout
-        finally:
-            browser.close()
+            return nome_arquivo
+
+    except Exception as e:
+        logger.error(f"[PLAYWRIGHT ERRO] Erro ao automatizar o NVR {ip_nvr}: {str(e)}")
+        return None

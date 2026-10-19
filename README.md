@@ -69,12 +69,12 @@ LAN7_SOLICITANTE=
 PASTA_EVIDENCIAS=
 ```
 
-### 5. Add local reference files (not versioned)
+### 5. Arquivos locais de configuração
 
-Place the following files in the project root — both are git-ignored due to sensitive content:
+Mantenha os seguintes arquivos no projeto:
 
-- `escolas.json` — mapping of school units to their NVR IP addresses.
-- `credenciais.json` — Google Cloud service account credentials, required for Google Sheets sync.
+- `data/escolas.json` — mapa das unidades, IPs dos NVRs e estado persistido da auditoria.
+- `credenciais.json` — credenciais da conta de serviço Google, ignoradas pelo Git.
 
 ---
 
@@ -106,10 +106,12 @@ Se o comando `docker version` mostrar apenas a parte Client e erro na parte Serv
 O container não inclui dados locais nem segredos na imagem. Antes de executar, mantenha na raiz do projeto:
 
 - `.env` com credenciais dos NVRs, 7LAN e demais integrações;
-- `escolas.json` com o mapa de unidades e IPs;
+- `data/escolas.json` com o mapa, IPs e estado das unidades;
 - `credenciais.json` com a conta de serviço do Google Sheets, se a sincronização estiver habilitada.
 
-Crie as pastas `logs` e `Evidencias_NVR_escolas` se ainda não existirem. O Compose monta os arquivos de configuração como somente leitura e persiste logs e evidências no computador host.
+O Python local procura `credenciais.json` na raiz do projeto. No Docker Compose, ele é montado em `/app/credenciais.json`. Se a chave estiver em outro local, configure `GOOGLE_APPLICATION_CREDENTIALS` com o caminho absoluto do arquivo.
+
+Crie as pastas `data`, `logs` e `Evidencias_NVR_escolas` se ainda não existirem. O Compose monta as credenciais como somente leitura e persiste o estado, os logs e as evidências no computador host.
 
 ### Construir e executar
 
@@ -120,6 +122,8 @@ docker compose run --build --rm auditor
 ```
 
 `run` executa a auditoria uma vez, `--rm` remove o container ao final e `--build` reconstrói a imagem quando necessário. Os resultados ficam em `logs` e `Evidencias_NVR_escolas` no host. O container usa Chromium headless para a automação do 7LAN.
+
+Uma unidade aprovada é pulada até sua próxima data de auditoria, registrada em `data/escolas.json`. A aprovação exige conectividade do NVR, print capturado e ticket confirmado no 7LAN; a janela padrão de nova auditoria é de 15 dias. Consulte `diario.md` para o formato e o fluxo de estado.
 
 Para apenas reconstruir sem iniciar uma auditoria:
 
@@ -174,7 +178,7 @@ O computador de destino ainda precisa do Docker Engine/Desktop, dos arquivos loc
 ├── compose.yaml               # Execução com configuração e dados persistidos
 ├── .dockerignore              # Evita enviar segredos/dados locais ao build
 ├── config.py                   # Environment loading, path resolution, and logging setup
-├── escolas.json                 # School units and NVR IP mapping (git-ignored)
+├── data/escolas.json            # School units, NVR IPs, and persisted audit state
 ├── credenciais.json              # Google service account credentials (git-ignored)
 ├── requirements.txt               # Explicit dependencies manifest
 ├── .env                             # Sensitive credentials (git-ignored)

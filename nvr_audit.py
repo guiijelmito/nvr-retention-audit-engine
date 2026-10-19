@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import json
 import os
 import re
 import time
@@ -8,7 +9,7 @@ from typing import TypeVar
 import requests
 from requests.auth import HTTPDigestAuth
 
-from config import ESCOLAS, SENHA, USUARIO, logger
+from config import ARQUIVO_ESCOLAS, DADOS_ESCOLAS, ESCOLAS, SENHA, USUARIO, logger
 from nvr_capture import capturar_print_nvr
 from cloud_sync import enviar_para_google_sheets
 from ticket_automation import criar_ticket_7lan
@@ -21,10 +22,76 @@ LIMITE_BURACO = 3
 TENTATIVAS_API = 3
 TIMEOUT_API = (5, 20)  # timeout de conexão e timeout de leitura
 HTTP_TRANSITORIOS = {408, 425, 429, 500, 502, 503, 504}
+INTERVALO_AUDITORIA_DIAS = 15
 
 
 class RespostaCGIInvalida(Exception):
     """A CGI respondeu, mas o corpo não representa um resultado reconhecido."""
+
+
+def _proxima_auditoria_agendada(nome_escola: str) -> datetime | None:
+    dados_escola = DADOS_ESCOLAS.get(nome_escola)
+    if not isinstance(dados_escola, dict) or dados_escola.get("status") != "aprovada":
+        return None
+
+    data_liberacao = dados_escola.get("proxima_auditoria_em")
+    if not isinstance(data_liberacao, str):
+        return None
+
+    try:
+        proxima = datetime.fromisoformat(data_liberacao)
+        if proxima.tzinfo is None:
+            proxima = proxima.astimezone()
+    except ValueError:
+        logger.warning(
+            "[ESTADO] Data de próxima auditoria inválida para %s; unidade será reavaliada.",
+            nome_escola,
+        )
+        return None
+
+    return proxima if datetime.now().astimezone() < proxima else None
+
+
+def _marcar_escola_aprovada(nome_escola: str, nvr_ip: str) -> tuple[str, str]:
+    """Persiste o sucesso em JSON de forma atômica após os três critérios."""
+    agora = datetime.now().astimezone()
+    concluida_em = agora.isoformat(timespec="seconds")
+    proxima_auditoria_em = (
+        agora + timedelta(days=INTERVALO_AUDITORIA_DIAS)
+    ).isoformat(timespec="seconds")
+
+    dados_originais = DADOS_ESCOLAS.get(nome_escola, nvr_ip)
+    if isinstance(dados_originais, dict):
+        registro = dict(dados_originais)
+        registro["ip"] = nvr_ip
+    else:
+        registro = {"ip": nvr_ip}
+
+    registro.update({
+        "status": "aprovada",
+        "concluida_em": concluida_em,
+        "proxima_auditoria_em": proxima_auditoria_em,
+    })
+    DADOS_ESCOLAS[nome_escola] = registro
+
+    arquivo_temporario = ARQUIVO_ESCOLAS.with_name(f"{ARQUIVO_ESCOLAS.name}.tmp")
+    try:
+        with arquivo_temporario.open("w", encoding="utf-8", newline="\n") as arquivo:
+            json.dump(DADOS_ESCOLAS, arquivo, ensure_ascii=False, indent=2)
+            arquivo.write("\n")
+        os.replace(arquivo_temporario, ARQUIVO_ESCOLAS)
+    except Exception:
+        if isinstance(dados_originais, dict):
+            DADOS_ESCOLAS[nome_escola] = dados_originais
+        else:
+            DADOS_ESCOLAS[nome_escola] = dados_originais
+        try:
+            arquivo_temporario.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
+
+    return concluida_em, proxima_auditoria_em
 
 
 def _repetivel(exc: Exception) -> bool:
@@ -190,6 +257,15 @@ def auditar_retencao_nvr_com_cloud():
     resultados_para_planilha = []
 
     for nome_escola, nvr_ip in ESCOLAS.items():
+        proxima_auditoria = _proxima_auditoria_agendada(nome_escola)
+        if proxima_auditoria is not None:
+            logger.info(
+                "[PULADA] %s aprovada; próxima auditoria liberada em %s.",
+                nome_escola,
+                proxima_auditoria.isoformat(timespec="seconds"),
+            )
+            continue
+
         logger.info("[UNIDADE] Processando unidade: %s - Endereço IP: (%s)", nome_escola, nvr_ip)
         url_base = f"http://{nvr_ip}/cgi-bin/mediaFileFind.cgi"
         sessao = requests.Session()
@@ -280,8 +356,40 @@ def auditar_retencao_nvr_com_cloud():
                         mes_num,
                         ano_str,
                     )
-                    capturar_print_nvr(nvr_ip, nome_escola, ano_str, mes_num)
-                    criar_ticket_7lan(nome_escola)
+                    caminho_evidencia = capturar_print_nvr(
+                        nvr_ip, nome_escola, ano_str, mes_num
+                    )
+                    if not caminho_evidencia or not os.path.isfile(caminho_evidencia):
+                        logger.warning(
+                            "[ESTADO] %s não aprovada: evidência não foi capturada.",
+                            nome_escola,
+                        )
+                        continue
+
+                    ticket_criado = criar_ticket_7lan(nome_escola)
+                    if ticket_criado is not True:
+                        logger.warning(
+                            "[ESTADO] %s não aprovada: criação do ticket não foi confirmada.",
+                            nome_escola,
+                        )
+                        continue
+
+                    try:
+                        concluida_em, proxima_auditoria_em = _marcar_escola_aprovada(
+                            nome_escola, nvr_ip
+                        )
+                        logger.info(
+                            "[ESTADO] %s aprovada em %s; próxima auditoria em %s.",
+                            nome_escola,
+                            concluida_em,
+                            proxima_auditoria_em,
+                        )
+                    except OSError as exc:
+                        logger.error(
+                            "[ESTADO] Não foi possível persistir aprovação de %s: %s",
+                            nome_escola,
+                            exc,
+                        )
                 except Exception as exc:
                     logger.error("[ERRO EVIDÊNCIA] Falha ao processar evidências: %s", exc)
         else:

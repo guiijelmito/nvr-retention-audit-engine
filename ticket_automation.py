@@ -18,17 +18,27 @@ def criar_ticket_7lan(nome_escola):
   abertura,
   anexo de evidências, apontamentos e fechamento do chamado.
   """
+  ticket_criado = False
+  nome_limpo = (
+      nome_escola.replace(" ", "_")
+      .replace(".", "")
+      .replace("ª", "a")
+      .replace("º", "o")
+  )
+  browser = None
+  page = None
+
   with sync_playwright() as p:
     # Em container/servidor não há desktop para o Chromium abrir uma janela.
     # Mantém o comportamento visível local por padrão e permite headless por env.
     headless = os.getenv("PLAYWRIGHT_HEADLESS", "false").strip().lower() in {
         "1", "true", "yes", "on"
     }
-    browser = p.chromium.launch(headless=headless)
-    context = browser.new_context()
-    page = context.new_page()
-
     try:
+      browser = p.chromium.launch(headless=headless)
+      context = browser.new_context()
+      page = context.new_page()
+
       logger.info(f"[PROD] Iniciando processo para a unidade: {nome_escola}")
 
       logger.debug("[DEBUG] 1. Acessando a URL de login...")
@@ -130,6 +140,8 @@ def criar_ticket_7lan(nome_escola):
           " listagem/ticket..."
       )
       page.wait_for_url("**/tickets**")
+      ticket_criado = True
+      logger.info("[TICKET] Ticket criado com sucesso para a unidade: %s", nome_escola)
 
       # --- EVIDÊNCIA E ANEXO ---
       logger.debug("[DEBUG] 21. Reconstruindo o caminho da evidência localmente...")
@@ -226,14 +238,23 @@ def criar_ticket_7lan(nome_escola):
       logger.error(f"\n[ERRO CRÍTICO] Falha capturada na execução para {nome_escola}!")
       logger.error(f"Detalhes do Erro: {e}")
 
-      caminho_erro_print = f"erro_snapshot_{nome_limpo}.png"
-      page.screenshot(path=caminho_erro_print)
-      logger.debug(f"[DEBUG] Screenshot de erro salvo em '{caminho_erro_print}'.\n")
+      if page is not None:
+        try:
+          caminho_erro_print = f"erro_snapshot_{nome_limpo}.png"
+          page.screenshot(path=caminho_erro_print)
+          logger.debug(f"[DEBUG] Screenshot de erro salvo em '{caminho_erro_print}'.\n")
+        except Exception as screenshot_error:
+          logger.debug("[DEBUG] Não foi possível salvar screenshot de erro: %s", screenshot_error)
 
     finally:
       logger.debug("[DEBUG] 30. Fechando navegador.")
-      page.wait_for_timeout(3000)
-      browser.close()
+      if browser is not None:
+        try:
+          browser.close()
+        except Exception as close_error:
+          logger.warning("[TICKET] Falha ao encerrar navegador: %s", close_error)
+
+  return ticket_criado
 
 if __name__ == "__main__":
   # Exemplo de chamada direta para teste unitário do módulo de produção

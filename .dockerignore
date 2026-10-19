@@ -8,6 +8,7 @@ __pycache__
 .env.*
 !.env.example
 escolas.json
+data/
 escolas_teste.json
 credenciais.json
 logs
