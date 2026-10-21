@@ -1,7 +1,8 @@
 # Ambientes Virtuais e Python Cache
-#venv/
-#env/
-#ENV/
+.venv/
+venv/
+env/
+ENV/
 __pycache__/
 *.pyc
 *.pyo
@@ -12,9 +13,13 @@ __pycache__/
 config.py
 credenciais.json
 escolas.json
+escolas_para_reteste.json
+data/devtools_escolas.json
 
 # Logs e Pastas de Evidências Locais (Prints do Playwright)
-#*.log
+logs/
+*.log
+.codex-import-check/
 Evidencias_NVR_escolas/
 Evidencias_OS/
 

@@ -1,6 +1,7 @@
-playwright>=1.40.0
-requests>=2.31.0
-python-dotenv>=1.0.0
-gspread>=5.10.0
-google-auth>=2.20.0
-pandas>=2.0.0
+# Dependências diretas da auditoria, captura visual e integração com Sheets.
+playwright==1.64.0
+requests==2.34.2
+python-dotenv==1.2.4
+gspread==6.2.1
+google-auth==2.62.0
+pandas==3.0.6

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import os
+from collections.abc import Callable
 from playwright.sync_api import sync_playwright
 from config import logger
 
@@ -11,7 +12,14 @@ from config import (
     SOLICITANTE_7LAN as solicitante,
 )
 
-def criar_ticket_7lan(nome_escola):
+def criar_ticket_7lan(
+    nome_escola,
+    *,
+    slow_mo_ms=0,
+    headless=None,
+    confirmar: Callable[[str], bool] | None = None,
+    titulo_customizado: str | None = None,
+):
   """Função principal de automação de tickets no 7LAN para auditoria NVR.
 
   Recebe o nome da escola/unidade auditada, realiza o fluxo completo de
@@ -31,11 +39,12 @@ def criar_ticket_7lan(nome_escola):
   with sync_playwright() as p:
     # Em container/servidor não há desktop para o Chromium abrir uma janela.
     # Mantém o comportamento visível local por padrão e permite headless por env.
-    headless = os.getenv("PLAYWRIGHT_HEADLESS", "false").strip().lower() in {
-        "1", "true", "yes", "on"
-    }
+    if headless is None:
+      headless = os.getenv("PLAYWRIGHT_HEADLESS", "false").strip().lower() in {
+          "1", "true", "yes", "on"
+      }
     try:
-      browser = p.chromium.launch(headless=headless)
+      browser = p.chromium.launch(headless=headless, slow_mo=slow_mo_ms)
       context = browser.new_context()
       page = context.new_page()
 
@@ -115,7 +124,7 @@ def criar_ticket_7lan(nome_escola):
       page.press("#service_desk_ticket_requestor_name:visible", "Enter")
 
       logger.debug("[DEBUG] 17. Preenchendo Título do Ticket...")
-      titulo_ticket = f"Controle de gravação - {nome_escola}"
+      titulo_ticket = titulo_customizado or f"Controle de gravação - {nome_escola}"
       page.fill("#service_desk_ticket_title", titulo_ticket)
       page.wait_for_timeout(1000)
 
@@ -133,6 +142,11 @@ def criar_ticket_7lan(nome_escola):
       botao_salvar_ticket = page.locator(
           "button.ant-btn-primary.buttons-open-new-ticket"
       )
+      if confirmar is not None and not confirmar(
+          f"Criar/salvar o ticket de {nome_escola}?"
+      ):
+        logger.warning("[DEVTOOLS] Criação do ticket cancelada pelo operador.")
+        return False
       botao_salvar_ticket.click()
 
       logger.debug(
@@ -228,6 +242,13 @@ def criar_ticket_7lan(nome_escola):
       page.wait_for_timeout(500)
 
       logger.debug("[DEBUG] 29. Clicando em 'Salvar e fechar ticket'...")
+      if confirmar is not None and not confirmar(
+          f"Salvar apontamento e fechar o ticket de {nome_escola}?"
+      ):
+        logger.warning(
+            "[DEVTOOLS] Fechamento cancelado pelo operador; o ticket permanece aberto."
+        )
+        return ticket_criado
       page.click("button:has-text('Salvar e fechar ticket')")
 
       logger.info(
