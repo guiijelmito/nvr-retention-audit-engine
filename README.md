@@ -183,6 +183,7 @@ The CSV report is written to `relatorios_firmware/` (git-ignored). It falls back
 ├── main.py                # Application entry point
 ├── nvr_audit.py            # Core audit engine: connectivity checks and daily non-stop verification
 ├── nvr_firmware.py          # Firmware inventory via magicBox.cgi (model, version, build)
+├── REGRAS_DO_PROJETO.md     # Business, execution and logic rules (single source)
 ├── nvr_capture.py           # Playwright module for GUI interaction and evidence screenshots
 ├── cloud_sync.py             # Google Sheets synchronization and report updating
 ├── ticket_automation.py       # 7LAN service desk ticket automation
