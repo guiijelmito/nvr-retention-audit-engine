@@ -1,7 +1,6 @@
 # A imagem só copia main.py e o pacote nvr_audit_engine; o resto fica fora do contexto.
 .git
 .github
-.agents
 .venv
 venv
 __pycache__
