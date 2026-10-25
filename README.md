@@ -1,6 +1,6 @@
 # NVR Retention & Continuous Recording Audit Engine
 
-[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Automation-green.svg)](https://playwright.dev/python/)
 [![Status](https://img.shields.io/badge/Status-In%20Development-yellow.svg)]()
 
@@ -22,7 +22,7 @@ Automated enterprise-grade solution engineered to audit multi-channel Network Vi
 
 ## Tech Stack
 
-- **Language:** Python 3.10+
+- **Language:** Python 3.11+
 - **Automation:** Playwright for Python
 - **HTTP / Auth:** `requests` with HTTP Digest Authentication (NVR proprietary APIs)
 - **Cloud Sync:** `gspread`, `google-auth` (Google Sheets)
@@ -54,6 +54,8 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
+Para desenvolver (testes e lint), use `pip install -r requirements-dev.txt`.
+
 ### 4. Configure environment variables
 
 Create a `.env` file in the root directory based on `.env.example`:
@@ -80,11 +82,25 @@ Mantenha os seguintes arquivos no projeto:
 
 ## Usage
 
-Run the full audit pipeline:
+Todos os comandos passam por `main.py`:
 
 ```bash
-python main.py
+python main.py              # auditoria completa (NVR, print, ticket 7LAN, estado e planilha)
+python main.py devtools     # validação interativa de escolas selecionadas, com confirmações
+python main.py firmware     # inventário de modelo e firmware dos NVRs (somente leitura)
+python main.py --help
 ```
+
+`python -m nvr_audit_engine` é equivalente a `python main.py`.
+
+### Testes
+
+```bash
+python -m pytest
+ruff check .
+```
+
+Os testes não acessam NVR, 7LAN nem Google: as respostas são simuladas. O GitHub Actions roda os dois comandos a cada push.
 
 ## Executar com Docker (Windows)
 
@@ -123,7 +139,7 @@ docker compose run --build --rm auditor
 
 `run` executa a auditoria uma vez, `--rm` remove o container ao final e `--build` reconstrói a imagem quando necessário. Os resultados ficam em `logs` e `Evidencias_NVR_escolas` no host. O container usa Chromium headless para a automação do 7LAN.
 
-Uma unidade aprovada é pulada até sua próxima data de auditoria, registrada em `data/escolas.json`. A aprovação exige conectividade do NVR, print capturado e ticket confirmado no 7LAN; a janela padrão de nova auditoria é de 15 dias. Consulte `diario.md` para o formato e o fluxo de estado.
+Uma unidade aprovada é pulada até sua próxima data de auditoria, registrada em `data/escolas.json`. A aprovação exige conectividade do NVR, print capturado e ticket confirmado no 7LAN; a janela padrão de nova auditoria é de 15 dias. Consulte `docs/DIARIO_ESTADO_ESCOLAS.md` para o formato e o fluxo de estado.
 
 Para apenas reconstruir sem iniciar uma auditoria:
 
@@ -134,7 +150,7 @@ docker compose build
 Para inventariar modelos e firmwares:
 
 ```powershell
-docker compose run --build --rm auditor python nvr_firmware.py
+docker compose run --build --rm auditor python main.py firmware
 ```
 
 ### Manutenção da imagem
@@ -168,9 +184,9 @@ O computador de destino ainda precisa do Docker Engine/Desktop, dos arquivos loc
 Query every NVR in `data/escolas.json` over the Dahua CGI API (`magicBox.cgi`, Digest auth with Basic fallback) and report model, firmware version and build date, grouped by firmware:
 
 ```bash
-python nvr_firmware.py                    # data/escolas.json
-python nvr_firmware.py --ip 10.0.0.5      # single NVR
-python nvr_firmware.py --json firmware.json
+python main.py firmware                    # data/escolas.json
+python main.py firmware --ip 10.0.0.5      # single NVR
+python main.py firmware --json firmware.json
 ```
 
 The CSV report is written to `relatorios_firmware/` (git-ignored). It falls back to Basic auth on older firmware, queries NVRs in parallel and groups the output by firmware version to target automations. Options: `--esquema https` (or `NVR_SCHEME`), `--porta`, `--inseguro` for self-signed certificates.
@@ -180,24 +196,44 @@ The CSV report is written to `relatorios_firmware/` (git-ignored). It falls back
 ## Project Structure
 
 ```
-├── main.py                # Application entry point
-├── nvr_audit.py            # Core audit engine: connectivity checks and daily non-stop verification
-├── nvr_firmware.py          # Firmware inventory via magicBox.cgi (model, version, build)
-├── nvr_capture.py           # Playwright module for GUI interaction and evidence screenshots
-├── cloud_sync.py             # Google Sheets synchronization and report updating
-├── ticket_automation.py       # 7LAN service desk ticket automation
-├── Dockerfile                 # Imagem portátil da aplicação e do Chromium
-├── compose.yaml               # Execução com configuração e dados persistidos
-├── .dockerignore              # Evita enviar segredos/dados locais ao build
-├── config.py                   # Environment loading, path resolution, and logging setup
-├── data/escolas.json            # School units, NVR IPs, and persisted audit state
-├── credenciais.json              # Google service account credentials (git-ignored)
-├── requirements.txt               # Explicit dependencies manifest
-├── .env                             # Sensitive credentials (git-ignored)
-├── .env.example                      # Template for environment variables
-├── .gitignore                         # Excludes venv, .env, credentials, and local data files
-└── README.md                           # Project documentation
+├── main.py                         # Ponto de entrada: python main.py [auditar|devtools|firmware]
+├── nvr_audit_engine/
+│   ├── cli.py                      # Comandos e preparação (pastas, log)
+│   ├── config.py                   # .env, caminhos e nomes da planilha (sem efeitos no import)
+│   ├── log.py                      # Logger da aplicação
+│   ├── escolas.py                  # data/escolas.json: lista, agenda de 15 dias e aprovação
+│   ├── evidencias.py               # Nome do print de evidência
+│   ├── devtools.py                 # Validação interativa em ambiente controlado
+│   ├── auditoria/
+│   │   ├── retencao.py             # Regra de dias contínuos (tolerância de 3 dias vazios)
+│   │   └── pipeline.py             # Orquestração: NVR → contagem → print → ticket → estado → planilha
+│   ├── nvr/
+│   │   ├── busca_gravacoes.py      # API CGI mediaFileFind (contrato de compatibilidade)
+│   │   ├── firmware.py             # Inventário via magicBox.cgi
+│   │   └── web/                    # Interface web do NVR via Playwright
+│   │       ├── captura.py          # Fluxo do print do calendário
+│   │       ├── calendario.py       # Seleção de ano/mês
+│   │       ├── localizadores.py    # Variantes de seletores por firmware
+│   │       └── diagnostico.py      # Diagnóstico de tela em falhas
+│   └── integracoes/
+│       ├── lan7.py                 # Chamado no helpdesk 7LAN
+│       └── sheets.py               # Google Sheets
+├── tests/                          # Espelha o pacote (tests/nvr, tests/auditoria, ...)
+├── docs/
+│   ├── ARQUITETURA.md              # Camadas, fluxo e onde colocar código novo
+│   ├── DIARIO_COMPATIBILIDADE_NVR.md
+│   └── DIARIO_ESTADO_ESCOLAS.md
+├── data/escolas.json               # Escolas, IPs e estado da auditoria (git-ignored)
+├── credenciais.json                # Conta de serviço Google (git-ignored)
+├── .env / .env.example             # Credenciais (git-ignored) / modelo
+├── pyproject.toml                  # Metadados, pytest e ruff
+├── requirements.txt                # Dependências fixas (usadas pelo Docker)
+├── requirements-dev.txt            # pytest e ruff
+├── Dockerfile / compose.yaml       # Imagem portátil e execução com dados persistidos
+└── .github/workflows/testes.yml    # CI: ruff + pytest
 ```
+
+Consulte `docs/ARQUITETURA.md` antes de adicionar um módulo novo.
 
 ---
 
