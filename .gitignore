@@ -1,34 +1,39 @@
-# Ambientes Virtuais e Python Cache
+# Ambientes virtuais e cache do Python
 .venv/
 venv/
 env/
 ENV/
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.env
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
 
-# Configurações e Credenciais Sensíveis (CRÍTICO)
+# Configurações e credenciais sensíveis (CRÍTICO)
+.env
 credenciais.json
 escolas.json
 escolas_para_reteste.json
+escolas_teste.json
+escolas_falha.json
 data/devtools_escolas.json
 
-# Logs e Pastas de Evidências Locais (Prints do Playwright)
+# Saídas locais da execução
 logs/
 *.log
-.codex-import-check/
 Evidencias_NVR_escolas/
 Evidencias_OS/
 relatorios_firmware/
+erro_snapshot_*.png
 
-# Arquivos de Sistema Operacional
+# Arquivos de sistema operacional
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# Editores de Código e IDEs
+# Editores de código e IDEs
 .vscode/
 .idea/
 *.swp

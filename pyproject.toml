@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nvr-retention-audit-engine"
+version = "0.1.0"
+description = "Auditoria de retenção de gravação em NVRs Dahua/Intelbras legados."
+readme = "README.md"
+requires-python = ">=3.11"
+dynamic = ["dependencies"]
+
+[project.scripts]
+nvr-audit = "nvr_audit_engine.cli:main"
+
+[tool.setuptools.dynamic]
+# requirements.txt continua sendo a lista fixa usada pelo Docker e pelo pip.
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["nvr_audit_engine*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".agents"]
+
+[tool.ruff.lint]
+# Erros reais (nomes indefinidos, imports sem uso, sintaxe). Estilo fica para depois.
+select = ["E9", "F"]
