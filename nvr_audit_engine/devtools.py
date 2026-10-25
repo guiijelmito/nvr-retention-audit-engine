@@ -15,11 +15,15 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
-from nvr_audit_engine.config import ESCOLAS, logger
+from nvr_audit_engine import config
+from nvr_audit_engine.auditoria.pipeline import Integracoes, auditar_retencao_nvr_com_cloud
+from nvr_audit_engine.config import logger
+from nvr_audit_engine.escolas import RegistroEscolas
+from nvr_audit_engine.integracoes import lan7, sheets
 from nvr_audit_engine.nvr.web.captura import capturar_print_nvr
 
 
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = config.BASE_DIR
 ARQUIVO_ESTADO_DEV = BASE_DIR / "data" / "devtools_escolas.json"
 ARQUIVO_PARA_RETESTE = BASE_DIR / "escolas_para_reteste.json"
 ARQUIVO_RETESTE_ANTIGO = BASE_DIR / "escolas_falha.json"
@@ -92,6 +96,21 @@ def _passo_a_passo_playwright():
             setattr(classe, nome_metodo, metodo_original)
 
 
+class _RegistroDev(RegistroEscolas):
+    """Estado separado do devtools que anota no relatório as unidades puladas."""
+
+    def __init__(self, arquivo: Path, dados: dict, relatorio: dict[str, dict[str, str]]):
+        super().__init__(arquivo, dados)
+        self.relatorio = relatorio
+
+    def proxima_auditoria_agendada(self, nome_escola: str):
+        proxima = super().proxima_auditoria_agendada(nome_escola)
+        if proxima is not None:
+            self.relatorio[nome_escola]["auditoria"] = "Pulado (estado aprovado)"
+            self.relatorio[nome_escola]["print"] = "Não executado"
+        return proxima
+
+
 def _confirmar(pergunta: str) -> bool:
     """Só aceita confirmação afirmativa explícita."""
     while True:
@@ -110,8 +129,12 @@ def _validar_ip(ip: str) -> str:
         raise ValueError(f"IP inválido: {ip!r}.") from exc
 
 
-def _nome_da_unidade(ip: str) -> str:
-    for nome, ip_configurado in ESCOLAS.items():
+def _carregar_inventario() -> dict[str, str]:
+    return RegistroEscolas.carregar(config.ARQUIVO_ESCOLAS).unidades_com_ip()
+
+
+def _nome_da_unidade(ip: str, inventario: dict[str, str]) -> str:
+    for nome, ip_configurado in inventario.items():
         if ip_configurado == ip:
             return nome
     nome = input(f"IP {ip} não está no inventário. Nome da escola: ").strip()
@@ -150,13 +173,14 @@ def _selecionar_unidades() -> dict[str, str]:
     escolha = input("Escolha [1/2/3]: ").strip()
 
     if escolha == "1":
-        if not ESCOLAS:
+        inventario = _carregar_inventario()
+        if not inventario:
             raise ValueError("O inventário não contém unidades com IP válido.")
-        return dict(ESCOLAS)
+        return inventario
 
     if escolha == "2":
         ip = _validar_ip(input("IP da unidade: "))
-        nome = _nome_da_unidade(ip)
+        nome = _nome_da_unidade(ip, _carregar_inventario())
         print(f"Unidade selecionada: {nome} ({ip})")
         return {nome: ip}
 
@@ -185,9 +209,7 @@ def _confirmar_sincronizacao(resultados: list[dict]) -> None:
             "{Gravação mais antiga}".format(**resultado)
         )
     if _confirmar("Enviar esses resultados ao Google Sheets?"):
-        from nvr_audit_engine.integracoes import sheets as cloud_sync
-
-        cloud_sync.enviar_para_google_sheets(resultados)
+        sheets.enviar_para_google_sheets(resultados)
     else:
         logger.info("[DEVTOOLS] Sincronização com Google Sheets cancelada.")
 
@@ -368,7 +390,7 @@ def main() -> int:
 
     # Reutiliza apenas o estado de desenvolvimento. Se a unidade já foi
     # aprovada, força uma nova rodada somente com confirmação contra duplicidade.
-    from nvr_audit_engine.auditoria import pipeline as nvr_audit
+    estado_salvo = RegistroEscolas(ARQUIVO_ESTADO_DEV, estado_dev)
 
     for nome, ip in selecionadas.items():
         registro = estado_dev.get(nome)
@@ -381,8 +403,7 @@ def main() -> int:
             }
             continue
 
-        nvr_audit.DADOS_ESCOLAS = estado_dev
-        liberacao = nvr_audit._proxima_auditoria_agendada(nome)
+        liberacao = estado_salvo.proxima_auditoria_agendada(nome)
         if liberacao is not None and not _confirmar(
             f"{nome} já foi testada e aprovada em dev. Forçar nova auditoria "
             "(pode criar um ticket duplicado)?"
@@ -396,12 +417,6 @@ def main() -> int:
                 "concluida_em": None,
                 "proxima_auditoria_em": None,
             }
-
-    # Mantém a execução limitada aos IPs escolhidos e nunca altera o arquivo
-    # oficial data/escolas.json.
-    nvr_audit.ESCOLAS = selecionadas
-    nvr_audit.DADOS_ESCOLAS = estado_dev
-    nvr_audit.ARQUIVO_ESCOLAS = ARQUIVO_ESTADO_DEV
 
     # O módulo de auditoria recebe as variantes visuais somente nesta execução.
     def capturar_print_dev(ip: str, nome: str, ano: int, mes: int):
@@ -423,12 +438,10 @@ def main() -> int:
         )
         return caminho
 
-    nvr_audit.capturar_print_nvr = capturar_print_dev
     ordem_teste = {
         nome: indice
         for indice, nome in enumerate(selecionadas, start=1)
     }
-    from nvr_audit_engine.integracoes.lan7 import criar_ticket_7lan
 
     def criar_ticket_dev(nome: str) -> bool:
         data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -437,26 +450,13 @@ def main() -> int:
             f"{nome} - {data_hora}"
         )
         logger.info("[DEVTOOLS] Título do ticket: %s", titulo)
-        return criar_ticket_7lan(
+        return lan7.criar_ticket_7lan(
             nome,
             headless=False,
             slow_mo_ms=PLAYWRIGHT_SLOW_MO_MS,
             confirmar=_confirmar,
             titulo_customizado=titulo,
         )
-
-    nvr_audit.criar_ticket_7lan = criar_ticket_dev
-
-    proxima_auditoria_original = nvr_audit._proxima_auditoria_agendada
-
-    def proxima_auditoria_dev(nome: str):
-        proxima = proxima_auditoria_original(nome)
-        if proxima is not None:
-            relatorio[nome]["auditoria"] = "Pulado (estado aprovado)"
-            relatorio[nome]["print"] = "Não executado"
-        return proxima
-
-    nvr_audit._proxima_auditoria_agendada = proxima_auditoria_dev
 
     def sincronizar_dev(resultados: list[dict]) -> None:
         for resultado in resultados:
@@ -475,12 +475,23 @@ def main() -> int:
                     relatorio[nome]["print"] = "Não gerado"
         _confirmar_sincronizacao(resultados)
 
-    nvr_audit.enviar_para_google_sheets = sincronizar_dev
+    # Mantém a execução limitada aos IPs escolhidos e nunca altera o arquivo
+    # oficial data/escolas.json.
+    registro_dev = _RegistroDev(ARQUIVO_ESTADO_DEV, estado_dev, relatorio)
+    integracoes = Integracoes(
+        capturar_print=capturar_print_dev,
+        criar_ticket=criar_ticket_dev,
+        enviar_planilha=sincronizar_dev,
+    )
 
     codigo_saida = 0
     try:
         with _passo_a_passo_playwright():
-            nvr_audit.auditar_retencao_nvr_com_cloud()
+            auditar_retencao_nvr_com_cloud(
+                registro=registro_dev,
+                escolas=selecionadas,
+                integracoes=integracoes,
+            )
     except KeyboardInterrupt:
         logger.warning("[DEVTOOLS] Execução interrompida pelo operador.")
         codigo_saida = 130

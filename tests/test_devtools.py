@@ -1,4 +1,4 @@
-"""Caracterização do devtools: estado separado, confirmações e chamadas de produção."""
+"""Devtools: estado separado, confirmações e integrações trocadas sem monkeypatch."""
 
 import json
 import tempfile
@@ -9,28 +9,14 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from nvr_audit_engine.integracoes import sheets as cloud_sync
-from nvr_audit_engine import devtools
-from nvr_audit_engine.auditoria import pipeline as nvr_audit
-from nvr_audit_engine.integracoes import lan7 as ticket_automation
-
-ATRIBUTOS_AUDITORIA = (
-    "ESCOLAS", "DADOS_ESCOLAS", "ARQUIVO_ESCOLAS", "capturar_print_nvr",
-    "criar_ticket_7lan", "_proxima_auditoria_agendada", "enviar_para_google_sheets",
-)
+from nvr_audit_engine import config, devtools, escolas
+from nvr_audit_engine.auditoria import pipeline, retencao
+from nvr_audit_engine.integracoes import lan7, sheets
+from tests.apoio import DataFixa
 
 
-class DataFixa(datetime):
-    @classmethod
-    def now(cls, tz=None):
-        base = cls(2026, 10, 25, 10, 0, 0)
-        return base if tz is None else base.replace(tzinfo=tz)
-
-
-class DevtoolsCaracterizacaoTests(unittest.TestCase):
+class DevtoolsTests(unittest.TestCase):
     def setUp(self):
-        originais = {nome: getattr(nvr_audit, nome) for nome in ATRIBUTOS_AUDITORIA}
-        self.addCleanup(lambda: [setattr(nvr_audit, n, v) for n, v in originais.items()])
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.pasta = Path(tmp.name)
@@ -51,17 +37,18 @@ class DevtoolsCaracterizacaoTests(unittest.TestCase):
 
         with (
             patch("builtins.input", side_effect=respostas),
-            patch.object(devtools, "ESCOLAS", {"Escola X": "192.0.2.30"}),
+            patch.object(devtools, "_carregar_inventario", return_value={"Escola X": "192.0.2.30"}),
             patch.object(devtools, "ARQUIVO_ESTADO_DEV", self.estado_dev),
             patch.object(devtools, "datetime", DataFixa),
             patch.object(devtools, "capturar_print_nvr", captura),
-            patch.object(nvr_audit, "ARQUIVO_ESCOLAS", self.oficial),
-            patch.object(nvr_audit, "datetime", DataFixa),
-            patch.object(nvr_audit, "verificar_api", return_value=True),
-            patch.object(nvr_audit, "consultar_dia", side_effect=consultar_dia),
-            patch.object(nvr_audit.requests, "Session"),
-            patch.object(ticket_automation, "criar_ticket_7lan", criar_ticket),
-            patch.object(cloud_sync, "enviar_para_google_sheets", enviar),
+            patch.object(config, "ARQUIVO_ESCOLAS", self.oficial),
+            patch.object(retencao, "datetime", DataFixa),
+            patch.object(escolas, "datetime", DataFixa),
+            patch.object(pipeline, "verificar_api", return_value=True),
+            patch.object(pipeline, "consultar_dia", side_effect=consultar_dia),
+            patch.object(pipeline.requests, "Session"),
+            patch.object(lan7, "criar_ticket_7lan", criar_ticket),
+            patch.object(sheets, "enviar_para_google_sheets", enviar),
             redirect_stdout(saida),
         ):
             codigo = devtools.main()
@@ -96,6 +83,22 @@ class DevtoolsCaracterizacaoTests(unittest.TestCase):
         self.assertEqual(estado["Escola X"]["status"], "aprovada")
         self.assertFalse(self.oficial.exists())
         self.assertIn("| Escola X | 192.0.2.30 | Concluída (1 dias) | OK    |", saida)
+
+    def test_nao_altera_modulos_de_producao(self):
+        originais = (
+            pipeline.Integracoes.capturar_print,
+            pipeline.Integracoes.criar_ticket,
+            pipeline.Integracoes.enviar_planilha,
+        )
+
+        self.executar(["2", "192.0.2.30", "1", "s", "n"])
+
+        self.assertEqual(originais, (
+            pipeline.Integracoes.capturar_print,
+            pipeline.Integracoes.criar_ticket,
+            pipeline.Integracoes.enviar_planilha,
+        ))
+        self.assertFalse(self.oficial.exists())
 
     def test_sincronizacao_recusada_nao_envia_planilha(self):
         codigo, _, _, enviar, _ = self.executar(["2", "192.0.2.30", "1", "s", "n"])

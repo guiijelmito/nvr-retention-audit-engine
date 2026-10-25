@@ -1,5 +1,4 @@
 from pathlib import Path
-import json
 import os
 import logging
 from dotenv import load_dotenv
@@ -66,18 +65,3 @@ ESCOPOS = [
 ]
 
 ARQUIVO_ESCOLAS = BASE_DIR / "data" / "escolas.json"
-if ARQUIVO_ESCOLAS.exists():
-    with open(ARQUIVO_ESCOLAS, "r", encoding="utf-8") as f:
-        DADOS_ESCOLAS = json.load(f)
-else:
-    DADOS_ESCOLAS = {}
-
-# Mantém compatibilidade com o formato legado {"nome": "ip"} e também lê
-# unidades com estado persistido no formato {"nome": {"ip": ..., ...}}.
-ESCOLAS = {}
-for nome_escola, dados_escola in DADOS_ESCOLAS.items():
-    ip_nvr = dados_escola.get("ip") if isinstance(dados_escola, dict) else dados_escola
-    if isinstance(ip_nvr, str) and ip_nvr.strip():
-        ESCOLAS[nome_escola] = ip_nvr
-    else:
-        logger.warning("[CONFIG] Unidade ignorada por não possuir IP válido: %s", nome_escola)

@@ -4,32 +4,10 @@ from unittest.mock import Mock, patch
 import requests
 
 from nvr_audit_engine.nvr import busca_gravacoes
+from tests.apoio import FakeResponse, search_responses
 
 
-class FakeResponse:
-    def __init__(self, text="", status_code=200):
-        self.text = text
-        self.status_code = status_code
-
-    def raise_for_status(self):
-        if self.status_code >= 400:
-            response = requests.Response()
-            response.status_code = self.status_code
-            raise requests.HTTPError(
-                f"HTTP {self.status_code}", response=response
-            )
-
-
-def search_responses(result_text):
-    return [
-        FakeResponse("result=token-1\n"),
-        FakeResponse("OK\n"),
-        FakeResponse(result_text),
-        FakeResponse("OK\n"),  # close do token
-    ]
-
-
-class NvrAuditRetryTests(unittest.TestCase):
+class BuscaGravacoesRetryTests(unittest.TestCase):
     def setUp(self):
         self.session = Mock(spec=requests.Session)
         self.base_url = "http://192.0.2.20/cgi-bin/mediaFileFind.cgi"
