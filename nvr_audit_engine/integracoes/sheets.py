@@ -2,7 +2,8 @@ from datetime import datetime
 import pandas as pd
 from google.oauth2.service_account import Credentials
 import gspread
-from nvr_audit_engine.config import ARQUIVO_CREDENCIAIS, ESCOPOS, NOME_PLANILHA, NOME_ABA, logger
+from nvr_audit_engine.config import ARQUIVO_CREDENCIAIS, ESCOPOS, NOME_PLANILHA, NOME_ABA
+from nvr_audit_engine.log import logger
 
 def enviar_para_google_sheets(dados_lista):
     try:

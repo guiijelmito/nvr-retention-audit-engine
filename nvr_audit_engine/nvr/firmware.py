@@ -7,10 +7,10 @@ data de build e número de série. O resultado serve para agrupar os NVRs
 por firmware e direcionar automações específicas para cada versão.
 
 Uso:
-    python nvr_firmware.py                      # usa data/escolas.json (ou escolas.json)
-    python nvr_firmware.py --arquivo outra.json
-    python nvr_firmware.py --ip 10.0.0.5 --ip 10.0.0.6
-    python nvr_firmware.py --saida relatorio.csv --json relatorio.json
+    python main.py firmware                      # usa data/escolas.json (ou escolas.json)
+    python main.py firmware --arquivo outra.json
+    python main.py firmware --ip 10.0.0.5 --ip 10.0.0.6
+    python main.py firmware --saida relatorio.csv --json relatorio.json
 
 Credenciais vêm do .env (NVR_USUARIO / NVR_SENHA), igual ao restante do projeto.
 """
@@ -22,7 +22,6 @@ import json
 import logging
 import os
 import re
-import sys
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -31,11 +30,9 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import requests
-from dotenv import load_dotenv
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
-BASE_DIR = Path(__file__).resolve().parents[2]
-load_dotenv(BASE_DIR / ".env")
+from nvr_audit_engine.config import BASE_DIR
 
 logger = logging.getLogger("VerthFirmware")
 
@@ -270,7 +267,10 @@ def imprimir_resumo(resultados: list[ResultadoNVR]) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Consulta a versão de firmware dos NVRs Dahua via CGI.")
+    parser = argparse.ArgumentParser(
+        prog="python main.py firmware",
+        description="Consulta a versão de firmware dos NVRs Dahua via CGI.",
+    )
     parser.add_argument("--arquivo", type=Path, help="JSON {escola: ip}. Padrão: data/escolas.json")
     parser.add_argument("--ip", action="append", help="Consulta um IP avulso (pode repetir); ignora o arquivo")
     parser.add_argument("--saida", type=Path, help="Caminho do CSV. Padrão: relatorios_firmware/firmware_nvrs_<data>.csv")
@@ -321,7 +321,3 @@ def main(argv: list[str] | None = None) -> int:
         logger.info(f"Relatório JSON salvo em {args.saida_json}")
 
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

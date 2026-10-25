@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from nvr_audit_engine.config import logger
+from nvr_audit_engine.log import logger
 
 INTERVALO_AUDITORIA_DIAS = 15
 

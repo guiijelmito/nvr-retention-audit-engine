@@ -1,4 +1,6 @@
-from nvr_audit_engine.auditoria.pipeline import auditar_retencao_nvr_com_cloud
+import sys
+
+from nvr_audit_engine.cli import main
 
 if __name__ == "__main__":
-    auditar_retencao_nvr_com_cloud()
+    sys.exit(main())

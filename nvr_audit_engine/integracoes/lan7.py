@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import os
 from collections.abc import Callable
 from playwright.sync_api import sync_playwright
-from nvr_audit_engine.config import logger
+from nvr_audit_engine.log import logger
 
 # Configurações de Acesso e Variáveis de Produção do ticket.7LAN
 from nvr_audit_engine.config import SENHA_7LAN as senha, URL_7LAN as url, USUARIO_7LAN as usuario
@@ -276,11 +276,3 @@ def criar_ticket_7lan(
           logger.warning("[TICKET] Falha ao encerrar navegador: %s", close_error)
 
   return ticket_criado
-
-if __name__ == "__main__":
-  # Exemplo de chamada direta para teste unitário do módulo de produção
-  escola_teste_prod = "Escola Municipal Exemplo Produção"
-  logger.info(f"=== TESTANDO MÓDULO DE PRODUÇÃO PARA: {escola_teste_prod} ===\n")
-  criar_ticket_7lan(escola_teste_prod)
-
-

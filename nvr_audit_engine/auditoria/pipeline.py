@@ -16,7 +16,7 @@ from requests.auth import HTTPDigestAuth
 
 from nvr_audit_engine import config
 from nvr_audit_engine.auditoria.retencao import SEM_DATA, contar_dias_continuos
-from nvr_audit_engine.config import logger
+from nvr_audit_engine.log import logger
 from nvr_audit_engine.escolas import RegistroEscolas
 from nvr_audit_engine.integracoes.lan7 import criar_ticket_7lan
 from nvr_audit_engine.integracoes.sheets import enviar_para_google_sheets

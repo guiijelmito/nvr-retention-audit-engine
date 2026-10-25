@@ -3,13 +3,14 @@
 Executa a mesma auditoria da produção, mas com navegador visível e lento,
 confirmações antes de criar/fechar tickets e sem alterar o estado oficial por
 padrão. Execute apenas em uma máquina com acesso de rede aos IPs selecionados.
+
+Uso: python main.py devtools
 """
 
 from __future__ import annotations
 
 import ipaddress
 import json
-import sys
 from contextlib import contextmanager
 from datetime import datetime
 from functools import wraps
@@ -17,7 +18,7 @@ from pathlib import Path
 
 from nvr_audit_engine import config
 from nvr_audit_engine.auditoria.pipeline import Integracoes, auditar_retencao_nvr_com_cloud
-from nvr_audit_engine.config import logger
+from nvr_audit_engine.log import logger
 from nvr_audit_engine.escolas import RegistroEscolas
 from nvr_audit_engine.integracoes import lan7, sheets
 from nvr_audit_engine.nvr.web.captura import capturar_print_nvr
@@ -501,7 +502,3 @@ def main() -> int:
     finally:
         _imprimir_tabela_devtools(relatorio)
     return codigo_saida
-
-
-if __name__ == "__main__":
-    sys.exit(main())

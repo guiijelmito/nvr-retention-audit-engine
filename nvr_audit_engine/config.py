@@ -1,6 +1,12 @@
-from pathlib import Path
+"""Configuração lida do ambiente (.env) e caminhos do projeto.
+
+Importar este módulo não cria pastas nem imprime nada; quem executa a
+aplicação chama `preparar_pastas()`.
+"""
+
 import os
-import logging
+from pathlib import Path
+
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parents[1]
@@ -9,32 +15,6 @@ load_dotenv(BASE_DIR / ".env")
 # Pastas de armazenamento
 EVIDENCIAS_DIR = BASE_DIR / "Evidencias_NVR_escolas"
 LOGS_DIR = BASE_DIR / "logs"
-
-# Garante que as pastas sejam criadas automaticamente se não existirem
-EVIDENCIAS_DIR.mkdir(parents=True, exist_ok=True)
-LOGS_DIR.mkdir(parents=True, exist_ok=True)
-
-print(f"Pasta de Evidências: {EVIDENCIAS_DIR}")
-print(f"Pasta de Logs: {LOGS_DIR}")
-
-# Configuração do Sistema de Logs Persistentes
-LOG_FILE = LOGS_DIR / "auditoria_NVR_escolas.log"
-logger = logging.getLogger("VerthAudit")
-logger.setLevel(logging.INFO)
-
-if not logger.handlers:
-    # Formato padrão para o log (Data/Hora, Nível, Mensagem)
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%d/%m/%Y %H:%M:%S")
-    
-    # Handler para gravação persistente em arquivo
-    file_handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-    
-    # Handler para exibição simultânea no console
-    console_handler = logging.StreamHandler()
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
 
 # Configurações de Acesso
 
@@ -65,3 +45,12 @@ ESCOPOS = [
 ]
 
 ARQUIVO_ESCOLAS = BASE_DIR / "data" / "escolas.json"
+
+
+def preparar_pastas() -> None:
+    """Garante que as pastas sejam criadas automaticamente se não existirem."""
+    EVIDENCIAS_DIR.mkdir(parents=True, exist_ok=True)
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+
+    print(f"Pasta de Evidências: {EVIDENCIAS_DIR}")
+    print(f"Pasta de Logs: {LOGS_DIR}")

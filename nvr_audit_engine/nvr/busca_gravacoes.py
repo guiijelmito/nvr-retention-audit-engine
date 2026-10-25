@@ -12,7 +12,7 @@ from typing import TypeVar
 
 import requests
 
-from nvr_audit_engine.config import logger
+from nvr_audit_engine.log import logger
 
 
 T = TypeVar("T")
