@@ -15,6 +15,7 @@ RUN python -m pip install --no-cache-dir -r requirements.txt "playwright==${PLAY
     && python -m playwright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 
-COPY *.py ./
+COPY main.py ./
+COPY nvr_audit_engine ./nvr_audit_engine
 
 CMD ["python", "main.py"]

@@ -10,7 +10,6 @@ __pycache__/
 .env
 
 # Configurações e Credenciais Sensíveis (CRÍTICO)
-config.py
 credenciais.json
 escolas.json
 escolas_para_reteste.json

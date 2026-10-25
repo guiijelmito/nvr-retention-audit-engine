@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import requests
 
-import nvr_audit
+from nvr_audit_engine.auditoria import pipeline as nvr_audit
 
 REQUESTS_SESSION = requests.Session
 

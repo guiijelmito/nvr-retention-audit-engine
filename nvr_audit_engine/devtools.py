@@ -15,11 +15,11 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
-from config import ESCOLAS, logger
-from nvr_capture import capturar_print_nvr
+from nvr_audit_engine.config import ESCOLAS, logger
+from nvr_audit_engine.nvr.web.captura import capturar_print_nvr
 
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[1]
 ARQUIVO_ESTADO_DEV = BASE_DIR / "data" / "devtools_escolas.json"
 ARQUIVO_PARA_RETESTE = BASE_DIR / "escolas_para_reteste.json"
 ARQUIVO_RETESTE_ANTIGO = BASE_DIR / "escolas_falha.json"
@@ -185,7 +185,7 @@ def _confirmar_sincronizacao(resultados: list[dict]) -> None:
             "{Gravação mais antiga}".format(**resultado)
         )
     if _confirmar("Enviar esses resultados ao Google Sheets?"):
-        import cloud_sync
+        from nvr_audit_engine.integracoes import sheets as cloud_sync
 
         cloud_sync.enviar_para_google_sheets(resultados)
     else:
@@ -368,7 +368,7 @@ def main() -> int:
 
     # Reutiliza apenas o estado de desenvolvimento. Se a unidade já foi
     # aprovada, força uma nova rodada somente com confirmação contra duplicidade.
-    import nvr_audit
+    from nvr_audit_engine.auditoria import pipeline as nvr_audit
 
     for nome, ip in selecionadas.items():
         registro = estado_dev.get(nome)
@@ -428,7 +428,7 @@ def main() -> int:
         nome: indice
         for indice, nome in enumerate(selecionadas, start=1)
     }
-    from ticket_automation import criar_ticket_7lan
+    from nvr_audit_engine.integracoes.lan7 import criar_ticket_7lan
 
     def criar_ticket_dev(nome: str) -> bool:
         data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

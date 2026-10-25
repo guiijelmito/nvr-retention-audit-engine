@@ -9,10 +9,10 @@ from typing import TypeVar
 import requests
 from requests.auth import HTTPDigestAuth
 
-from config import ARQUIVO_ESCOLAS, DADOS_ESCOLAS, ESCOLAS, SENHA, USUARIO, logger
-from nvr_capture import capturar_print_nvr
-from cloud_sync import enviar_para_google_sheets
-from ticket_automation import criar_ticket_7lan
+from nvr_audit_engine.config import ARQUIVO_ESCOLAS, DADOS_ESCOLAS, ESCOLAS, SENHA, USUARIO, logger
+from nvr_audit_engine.nvr.web.captura import capturar_print_nvr
+from nvr_audit_engine.integracoes.sheets import enviar_para_google_sheets
+from nvr_audit_engine.integracoes.lan7 import criar_ticket_7lan
 
 
 T = TypeVar("T")

@@ -12,9 +12,9 @@ from unittest.mock import Mock, patch
 
 import requests
 
-import cloud_sync
-import nvr_audit
-import nvr_firmware
+from nvr_audit_engine.integracoes import sheets as cloud_sync
+from nvr_audit_engine.auditoria import pipeline as nvr_audit
+from nvr_audit_engine.nvr import firmware as nvr_firmware
 
 
 class DataFixa(datetime):

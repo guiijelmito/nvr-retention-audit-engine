@@ -9,10 +9,10 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import cloud_sync
-import devtools
-import nvr_audit
-import ticket_automation
+from nvr_audit_engine.integracoes import sheets as cloud_sync
+from nvr_audit_engine import devtools
+from nvr_audit_engine.auditoria import pipeline as nvr_audit
+from nvr_audit_engine.integracoes import lan7 as ticket_automation
 
 ATRIBUTOS_AUDITORIA = (
     "ESCOLAS", "DADOS_ESCOLAS", "ARQUIVO_ESCOLAS", "capturar_print_nvr",

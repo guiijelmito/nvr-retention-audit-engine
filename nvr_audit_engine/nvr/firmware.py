@@ -34,7 +34,7 @@ import requests
 from dotenv import load_dotenv
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[2]
 load_dotenv(BASE_DIR / ".env")
 
 logger = logging.getLogger("VerthFirmware")

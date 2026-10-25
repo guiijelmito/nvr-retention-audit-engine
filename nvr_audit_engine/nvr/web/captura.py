@@ -6,7 +6,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-from config import LOGS_DIR, USUARIO, SENHA, logger, PASTA_EVIDENCIAS as pasta_destino
+from nvr_audit_engine.config import LOGS_DIR, USUARIO, SENHA, logger, PASTA_EVIDENCIAS as pasta_destino
 
 
 class ElementoNVRNaoEncontrado(RuntimeError):

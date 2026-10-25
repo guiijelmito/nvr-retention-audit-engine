@@ -2,11 +2,11 @@ from datetime import datetime, timedelta
 import os
 from collections.abc import Callable
 from playwright.sync_api import sync_playwright
-from config import logger
+from nvr_audit_engine.config import logger
 
 # Configurações de Acesso e Variáveis de Produção do ticket.7LAN
-from config import SENHA_7LAN as senha, URL_7LAN as url, USUARIO_7LAN as usuario
-from config import (
+from nvr_audit_engine.config import SENHA_7LAN as senha, URL_7LAN as url, USUARIO_7LAN as usuario
+from nvr_audit_engine.config import (
     CLIENTE_7LAN as cliente,
     PASTA_EVIDENCIAS as pasta_destino,
     SOLICITANTE_7LAN as solicitante,
