@@ -163,6 +163,18 @@ docker compose run --no-build --rm auditor
 
 O computador de destino ainda precisa do Docker Engine/Desktop, dos arquivos locais de configuração e acesso de rede aos NVRs. Para a estação da GCM sem Docker/WSL e sem possibilidade de reinicialização, use temporariamente outra máquina já preparada ou aguarde a instalação do runtime; a imagem sozinha não roda diretamente no Windows.
 
+### Firmware inventory
+
+Query every NVR in `data/escolas.json` over the Dahua CGI API (`magicBox.cgi`, Digest auth with Basic fallback) and report model, firmware version and build date, grouped by firmware:
+
+```bash
+python nvr_firmware.py                    # data/escolas.json
+python nvr_firmware.py --ip 10.0.0.5      # single NVR
+python nvr_firmware.py --json firmware.json
+```
+
+The CSV report is written to `relatorios_firmware/` (git-ignored). Unlike `inventario_nvr.py`, it falls back to Basic auth on older firmware, queries NVRs in parallel, does not import `config.py`, and groups the output by firmware version to target automations.
+
 ---
 
 ## Project Structure
@@ -170,6 +182,7 @@ O computador de destino ainda precisa do Docker Engine/Desktop, dos arquivos loc
 ```
 ├── main.py                # Application entry point
 ├── nvr_audit.py            # Core audit engine: connectivity checks and daily non-stop verification
+├── nvr_firmware.py          # Firmware inventory via magicBox.cgi (model, version, build)
 ├── nvr_capture.py           # Playwright module for GUI interaction and evidence screenshots
 ├── cloud_sync.py             # Google Sheets synchronization and report updating
 ├── ticket_automation.py       # 7LAN service desk ticket automation

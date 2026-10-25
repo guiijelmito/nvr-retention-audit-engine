@@ -22,6 +22,7 @@ logs/
 .codex-import-check/
 Evidencias_NVR_escolas/
 Evidencias_OS/
+relatorios_firmware/
 
 # Arquivos de Sistema Operacional
 .DS_Store
