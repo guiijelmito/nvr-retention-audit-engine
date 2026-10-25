@@ -14,7 +14,10 @@ import requests
 
 from nvr_audit_engine.integracoes import sheets as cloud_sync
 from nvr_audit_engine.auditoria import pipeline as nvr_audit
+from nvr_audit_engine.nvr import busca_gravacoes
 from nvr_audit_engine.nvr import firmware as nvr_firmware
+
+REQUESTS_SESSION = requests.Session
 
 
 class DataFixa(datetime):
@@ -73,8 +76,8 @@ class AuditoriaCaracterizacaoTests(unittest.TestCase):
             patch.dict(nvr_audit.DADOS_ESCOLAS, dados, clear=True),
             patch.object(nvr_audit, "ARQUIVO_ESCOLAS", self.arquivo_escolas),
             patch.object(nvr_audit, "LIMITE_DIAS", limite_dias),
-            patch.object(nvr_audit, "_consultar_dia", side_effect=consultar_dia),
-            patch.object(nvr_audit, "_verificar_api", return_value=api_ok),
+            patch.object(nvr_audit, "consultar_dia", side_effect=consultar_dia),
+            patch.object(nvr_audit, "verificar_api", return_value=api_ok),
             patch.object(nvr_audit.requests, "Session", return_value=sessao),
             patch.object(nvr_audit, "capturar_print_nvr", capturar),
             patch.object(nvr_audit, "criar_ticket_7lan", criar_ticket),
@@ -403,6 +406,63 @@ class FirmwareCaracterizacaoTests(unittest.TestCase):
             resultado = nvr_firmware.consultar_nvr("Escola A", "10.0.0.5", "u", "s")
 
         self.assertEqual((resultado.status, resultado.erro), ("offline", "NVR inacessível na rede"))
+
+
+class FakeResponse:
+    def __init__(self, text="", status_code=200):
+        self.text = text
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            response = requests.Response()
+            response.status_code = self.status_code
+            raise requests.HTTPError(f"HTTP {self.status_code}", response=response)
+
+
+def search_responses(result_text):
+    return [
+        FakeResponse("result=token-1\n"),
+        FakeResponse("OK\n"),
+        FakeResponse(result_text),
+        FakeResponse("OK\n"),  # close do token
+    ]
+
+
+class PipelineComCGISimuladaTests(unittest.TestCase):
+    @patch.object(nvr_audit, "capturar_print_nvr")
+    @patch.object(nvr_audit, "criar_ticket_7lan")
+    @patch.object(nvr_audit, "enviar_para_google_sheets")
+    @patch.object(nvr_audit.requests, "Session")
+    @patch.object(busca_gravacoes.time, "sleep")
+    def test_incomplete_school_is_reported_and_never_creates_ticket(
+        self, sleep, session_factory, send_sheet, create_ticket, capture
+    ):
+        session = Mock(spec=REQUESTS_SESSION)
+        session.auth = None
+        session.get.side_effect = [
+            FakeResponse("result=probe-token\n"),
+            FakeResponse("OK\n"),  # cleanup do token de preflight
+            *search_responses("found=1\nitems[0].StartTime=2026-01-01 00:00:00\n"),
+            requests.exceptions.ConnectionError("rede instável"),
+            requests.exceptions.ConnectionError("rede instável"),
+            requests.exceptions.ConnectionError("rede instável"),
+        ]
+        session_factory.return_value = session
+
+        with (
+            patch.dict(nvr_audit.ESCOLAS, {"Escola A": "192.0.2.20"}, clear=True),
+            patch.object(nvr_audit, "LIMITE_DIAS", 2),
+            redirect_stdout(StringIO()),
+        ):
+            nvr_audit.auditar_retencao_nvr_com_cloud()
+
+        row = send_sheet.call_args.args[0][0]
+        self.assertEqual(row["Dias Contínuos Válidos"], "Verificação incompleta (falha da API)")
+        self.assertEqual(row["Gravação mais antiga"], "N/A")
+        create_ticket.assert_not_called()
+        capture.assert_not_called()
+        session.close.assert_called_once()
 
 
 if __name__ == "__main__":
