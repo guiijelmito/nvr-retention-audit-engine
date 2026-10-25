@@ -28,6 +28,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 from dotenv import load_dotenv
@@ -77,11 +78,25 @@ class ResultadoNVR:
 def parse_chave_valor(texto: str) -> dict:
     """Converte a resposta 'chave=valor' (uma por linha) do CGI em dict."""
     dados = {}
-    for linha in texto.splitlines():
+    for linha in texto.replace("\x00", "").splitlines():
         if "=" in linha:
             chave, valor = linha.split("=", 1)
             dados[chave.strip()] = valor.strip()
     return dados
+
+
+def montar_url_base(endereco: str, esquema: str = "http", porta: int | None = None) -> str:
+    """Aceita 'ip', 'ip:porta' ou 'https://host[:porta]' e devolve 'esquema://host[:porta]'."""
+    endereco = endereco.strip()
+    if "://" in endereco:
+        partes = urlsplit(endereco)
+        esquema = partes.scheme
+    else:
+        partes = urlsplit(f"//{endereco}")
+    if not partes.hostname:
+        raise ValueError(f"Endereço inválido: {endereco!r}")
+    porta_final = partes.port or porta
+    return f"{esquema}://{partes.hostname}" + (f":{porta_final}" if porta_final else "")
 
 
 def separar_versao_build(versao_bruta: str) -> tuple[str, str]:
@@ -94,17 +109,19 @@ def separar_versao_build(versao_bruta: str) -> tuple[str, str]:
     return match.group(1).strip(), (match.group(2) or "").strip()
 
 
-def criar_sessao(nvr_ip: str, usuario: str, senha: str, timeout: float) -> tuple[requests.Session, str]:
+def criar_sessao(url_nvr: str, usuario: str, senha: str, timeout: float,
+                 verificar_tls: bool = True) -> tuple[requests.Session, str]:
     """Abre sessão autenticada: tenta Digest e cai para Basic se o NVR pedir.
 
     Retorna (sessao, tipo_autenticacao). Lança PermissionError se nenhuma
     autenticação for aceita e ConnectionError se o NVR não responder.
     """
-    url_teste = f"http://{nvr_ip}/cgi-bin/magicBox.cgi?action=getSoftwareVersion"
+    url_teste = f"{url_nvr}/cgi-bin/magicBox.cgi?action=getSoftwareVersion"
 
     for nome, classe_auth in (("digest", HTTPDigestAuth), ("basic", HTTPBasicAuth)):
         sessao = requests.Session()
         sessao.auth = classe_auth(usuario, senha)
+        sessao.verify = verificar_tls
         resp = sessao.get(url_teste, timeout=timeout)
 
         if resp.status_code == 200:
@@ -122,11 +139,18 @@ def criar_sessao(nvr_ip: str, usuario: str, senha: str, timeout: float) -> tuple
     raise PermissionError("Usuário/senha recusados pelo NVR")
 
 
-def consultar_nvr(escola: str, nvr_ip: str, usuario: str, senha: str, timeout: float = 8.0) -> ResultadoNVR:
+def consultar_nvr(escola: str, nvr_ip: str, usuario: str, senha: str, timeout: float = 8.0,
+                  esquema: str = "http", porta: int | None = None,
+                  verificar_tls: bool = True) -> ResultadoNVR:
     resultado = ResultadoNVR(escola=escola, ip=nvr_ip)
 
     try:
-        sessao, resultado.autenticacao = criar_sessao(nvr_ip, usuario, senha, timeout)
+        url_nvr = montar_url_base(nvr_ip, esquema, porta)
+        sessao, resultado.autenticacao = criar_sessao(url_nvr, usuario, senha, timeout, verificar_tls)
+    except requests.exceptions.SSLError:
+        resultado.status = "erro"
+        resultado.erro = "Falha TLS/certificado (use --inseguro só em rede controlada)"
+        return resultado
     except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         resultado.status = "offline"
         resultado.erro = "NVR inacessível na rede"
@@ -140,7 +164,7 @@ def consultar_nvr(escola: str, nvr_ip: str, usuario: str, senha: str, timeout: f
         resultado.erro = str(e)
         return resultado
 
-    url_base = f"http://{nvr_ip}/cgi-bin/magicBox.cgi"
+    url_base = f"{url_nvr}/cgi-bin/magicBox.cgi"
     try:
         for chave, acao in CONSULTAS.items():
             try:
@@ -159,7 +183,8 @@ def consultar_nvr(escola: str, nvr_ip: str, usuario: str, senha: str, timeout: f
     resultado.versao_firmware, resultado.build_firmware = separar_versao_build(versao)
     resultado.modelo = (
         parse_chave_valor(bruto.get("tipo_dispositivo", "")).get("type")
-        or info.get("deviceType", "")
+        or info.get("deviceType")
+        or info.get("updateSerial", "")
     )
     resultado.versao_hardware = (
         parse_chave_valor(bruto.get("versao_hardware", "")).get("version")
@@ -251,6 +276,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--saida", type=Path, help="Caminho do CSV. Padrão: relatorios_firmware/firmware_nvrs_<data>.csv")
     parser.add_argument("--json", type=Path, dest="saida_json", help="Também salva o resultado completo em JSON")
     parser.add_argument("--timeout", type=float, default=8.0, help="Timeout por requisição em segundos (padrão 8)")
+    parser.add_argument("--esquema", choices=("http", "https"), default=os.getenv("NVR_SCHEME", "http"),
+                        help="Protocolo dos NVRs; padrão http (ou NVR_SCHEME no .env)")
+    parser.add_argument("--porta", type=int, help="Porta aplicada aos endereços que não informam porta")
+    parser.add_argument("--inseguro", action="store_true",
+                        help="Não valida o certificado HTTPS (somente em rede controlada)")
     parser.add_argument("--paralelo", type=int, default=8, help="NVRs consultados ao mesmo tempo (padrão 8)")
     args = parser.parse_args(argv)
 
@@ -273,7 +303,8 @@ def main(argv: list[str] | None = None) -> int:
 
     def tarefa(item):
         escola, nvr_ip = item
-        r = consultar_nvr(escola, nvr_ip, usuario, senha, args.timeout)
+        r = consultar_nvr(escola, nvr_ip, usuario, senha, args.timeout,
+                          args.esquema, args.porta, not args.inseguro)
         logger.info(f"[{r.status.upper()}] {escola} ({nvr_ip}) -> {r.versao_firmware or r.erro}")
         return r
 

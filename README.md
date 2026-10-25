@@ -134,7 +134,7 @@ docker compose build
 Para inventariar modelos e firmwares:
 
 ```powershell
-docker compose run --build --rm auditor python inventario_nvr.py
+docker compose run --build --rm auditor python nvr_firmware.py
 ```
 
 ### Manutenção da imagem
@@ -173,7 +173,7 @@ python nvr_firmware.py --ip 10.0.0.5      # single NVR
 python nvr_firmware.py --json firmware.json
 ```
 
-The CSV report is written to `relatorios_firmware/` (git-ignored). Unlike `inventario_nvr.py`, it falls back to Basic auth on older firmware, queries NVRs in parallel, does not import `config.py`, and groups the output by firmware version to target automations.
+The CSV report is written to `relatorios_firmware/` (git-ignored). It falls back to Basic auth on older firmware, queries NVRs in parallel and groups the output by firmware version to target automations. Options: `--esquema https` (or `NVR_SCHEME`), `--porta`, `--inseguro` for self-signed certificates.
 
 ---
 
@@ -186,7 +186,6 @@ The CSV report is written to `relatorios_firmware/` (git-ignored). Unlike `inven
 ├── nvr_capture.py           # Playwright module for GUI interaction and evidence screenshots
 ├── cloud_sync.py             # Google Sheets synchronization and report updating
 ├── ticket_automation.py       # 7LAN service desk ticket automation
-├── inventario_nvr.py          # Inventário de modelo e firmware Dahua
 ├── Dockerfile                 # Imagem portátil da aplicação e do Chromium
 ├── compose.yaml               # Execução com configuração e dados persistidos
 ├── .dockerignore              # Evita enviar segredos/dados locais ao build
