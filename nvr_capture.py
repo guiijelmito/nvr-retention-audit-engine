@@ -17,11 +17,14 @@ class ElementoNVRLocalizado:
     """Encapsula o locator e o frame em que ele foi encontrado."""
 
     def __init__(self, locator, contexto):
-        self.locator = locator
+        # Guardado como `_alvo` para não esconder o método Locator.locator():
+        # com `self.locator`, controle.locator("...") devolvia o próprio
+        # Locator e a chamada falhava com "'Locator' object is not callable".
+        self._alvo = locator
         self.contexto = contexto
 
     def __getattr__(self, nome):
-        return getattr(self.locator, nome)
+        return getattr(self._alvo, nome)
 
 
 def _css(seletor: str):
@@ -413,6 +416,60 @@ def _meses_possiveis(mes_num: int) -> list[str]:
     return meses[mes_num]
 
 
+MESES_CALENDARIO_ANTD = {
+    1: ["Jan"],
+    2: ["Fev", "Feb"],
+    3: ["Mar"],
+    4: ["Abr", "Apr"],
+    5: ["Mai", "May"],
+    6: ["Jun"],
+    7: ["Jul"],
+    8: ["Ago", "Aug"],
+    9: ["Set", "Sep"],
+    10: ["Out", "Oct"],
+    11: ["Nov"],
+    12: ["Dez", "Dec"],
+}
+
+
+def _selecionar_calendario_antd(page, ano_alvo, mes_num: int) -> bool:
+    """Fluxo de setembro/2026 para a tela Ant Design (#rc_select_2 / #rc_select_3).
+
+    Devolve False sem tocar na tela quando o NVR não usa esses seletores,
+    para que os outros fluxos sejam tentados.
+    """
+    if page.locator("#rc_select_2").count() == 0 or page.locator("#rc_select_3").count() == 0:
+        return False
+
+    logger.info("[PLAYWRIGHT] Selecionando o ano %s...", ano_alvo)
+    page.locator("#rc_select_2").click(force=True)
+    page.wait_for_timeout(1000)
+    page.locator(f'.ant-select-item-option-content:text-is("{ano_alvo}")').click()
+    page.wait_for_timeout(1500)
+
+    candidatos = MESES_CALENDARIO_ANTD.get(mes_num, ["Jan"])
+    logger.info("[PLAYWRIGHT] Selecionando o mês correspondente (tentando: %s)...", candidatos)
+    page.locator("#rc_select_3").click(force=True)
+    page.wait_for_timeout(1000)
+
+    clicou_mes = False
+    for mes_txt in candidatos:
+        try:
+            opcao = page.locator(f'.ant-select-item-option-content:text-is("{mes_txt}")')
+            if opcao.is_visible(timeout=1500):
+                opcao.click()
+                clicou_mes = True
+                break
+        except Exception:
+            continue
+
+    if not clicou_mes:
+        page.locator(f'.ant-select-item-option-content:text-is("{candidatos[0]}")').click()
+
+    page.wait_for_timeout(2000)
+    return True
+
+
 def _confirmar_login_concluido(campo_senha, nome_escola: str, ip_nvr: str) -> None:
     """Espera a tela de login sair e diferencia falha de autenticação da busca."""
     try:
@@ -497,6 +554,27 @@ def _diagnosticar_tela(page, nome_escola: str, ip_nvr: str) -> None:
             "[PLAYWRIGHT DIAGNÓSTICO] Não consegui salvar screenshot (%s).",
             type(exc).__name__,
         )
+
+
+def _salvar_print(page, nome_escola: str) -> str:
+    os.makedirs(pasta_destino, exist_ok=True)
+    data_str = datetime.now().strftime("%d-%m-%Y")
+    nome_limpo = (
+        nome_escola.replace(" ", "_")
+        .replace(".", "")
+        .replace("ª", "a")
+        .replace("º", "o")
+    )
+    nome_arquivo = os.path.join(
+        pasta_destino,
+        f"{nome_limpo}_{data_str}.png",
+    )
+    page.screenshot(path=nome_arquivo, full_page=True)
+    logger.info(
+        "[PLAYWRIGHT] Print do calendário mensal capturado: %s",
+        nome_arquivo,
+    )
+    return nome_arquivo
 
 
 def capturar_print_nvr(
@@ -587,6 +665,15 @@ def capturar_print_nvr(
             page, "Pesquisa/Playback", _candidatos_pesquisa()
         )
         botao_pesquisar.click()
+        page.wait_for_timeout(3000)
+
+        if _selecionar_calendario_antd(page, ano_alvo, mes_num):
+            logger.info(
+                "[PLAYWRIGHT] Calendário Ant Design selecionado: %02d/%s.",
+                mes_num,
+                ano_alvo,
+            )
+            return _salvar_print(page, nome_escola)
 
         botao_abrir_calendario = _primeiro_visivel(
             page,
@@ -632,24 +719,7 @@ def capturar_print_nvr(
                 "mês",
             )
 
-        os.makedirs(pasta_destino, exist_ok=True)
-        data_str = datetime.now().strftime("%d-%m-%Y")
-        nome_limpo = (
-            nome_escola.replace(" ", "_")
-            .replace(".", "")
-            .replace("ª", "a")
-            .replace("º", "o")
-        )
-        nome_arquivo = os.path.join(
-            pasta_destino,
-            f"{nome_limpo}_{data_str}.png",
-        )
-        page.screenshot(path=nome_arquivo, full_page=True)
-        logger.info(
-            "[PLAYWRIGHT] Print do calendário mensal capturado: %s",
-            nome_arquivo,
-        )
-        return nome_arquivo
+        return _salvar_print(page, nome_escola)
     except Exception as exc:
         logger.error(
             "[PLAYWRIGHT ERRO] Captura falhou no NVR %s (%s): %s",
