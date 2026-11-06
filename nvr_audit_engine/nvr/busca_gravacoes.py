@@ -23,6 +23,11 @@ TIMEOUT_API = (5, 20)  # timeout de conexão e timeout de leitura
 HTTP_TRANSITORIOS = {408, 425, 429, 500, 502, 503, 504}
 
 
+def _sem_token(exc: Exception) -> str:
+    """Mensagem da exceção sem o token de busca que vem na URL (`object=...`)."""
+    return re.sub(r"object=[^&\s'\")]+", "object=***", str(exc))
+
+
 class RespostaCGIInvalida(Exception):
     """A CGI respondeu, mas o corpo não representa um resultado reconhecido."""
 
@@ -58,7 +63,7 @@ def _com_retentativas(acao: Callable[[], T], contexto: str) -> T | None:
                     tentativa,
                     TENTATIVAS_API,
                     type(exc).__name__,
-                    exc,
+                    _sem_token(exc),
                 )
                 return None
 

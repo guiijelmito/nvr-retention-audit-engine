@@ -142,6 +142,31 @@ class BuscaGravacoesRetryTests(unittest.TestCase):
         sleep.assert_not_called()
 
     @patch.object(busca_gravacoes.time, "sleep")
+    def test_log_de_erro_nao_expoe_o_token_de_busca(self, sleep):
+        # Mensagem real do log de 30/10 (Carmo Cascardo), com o token na URL.
+        resposta = requests.Response()
+        resposta.status_code = 404
+        erro = requests.HTTPError(
+            "404 Client Error: Not Found for url: http://172.16.11.2/cgi-bin/"
+            "mediaFileFind.cgi?action=findFile&object=189090&condition.Channel=1",
+            response=resposta,
+        )
+        self.session.get.side_effect = [
+            FakeResponse("result=189090\n"),
+            erro,
+            FakeResponse("OK\n"),
+        ]
+
+        with self.assertLogs("VerthAudit", level="ERROR") as logs:
+            busca_gravacoes.consultar_dia(
+                self.session, self.base_url, 1, "2026-06-25", "Escola A"
+            )
+
+        texto = "\n".join(logs.output)
+        self.assertNotIn("189090", texto)
+        self.assertIn("action=findFile&object=***", texto)
+
+    @patch.object(busca_gravacoes.time, "sleep")
     def test_transient_http_503_is_retried(self, sleep):
         self.session.get.side_effect = [
             FakeResponse("temporarily unavailable", status_code=503),
