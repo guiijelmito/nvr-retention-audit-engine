@@ -94,6 +94,16 @@ def _markdown(resumo: dict) -> str:
     else:
         partes += [f"- {m['escola']}: {m['antes']} → {m['agora']}" for m in resumo["mudancas"]]
 
+    por_firmware: dict[str, Counter] = {}
+    for linha in resumo["escolas"]:
+        por_firmware.setdefault(linha["firmware"] or "desconhecido", Counter())[linha["resultado"]] += 1
+    if set(por_firmware) != {"desconhecido"}:
+        partes += ["", "## Resultados por firmware", ""]
+        partes += [
+            f"- {versao}: " + ", ".join(f"{res} {qtd}" for res, qtd in sorted(contagem.items()))
+            for versao, contagem in sorted(por_firmware.items())
+        ]
+
     if resumo["offline_persistentes"]:
         partes += ["", "## Offline persistente (acionar a rede)", ""]
         partes += [

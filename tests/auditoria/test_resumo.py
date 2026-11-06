@@ -73,6 +73,25 @@ class ResumoTests(unittest.TestCase):
         self.assertIn("- Isaura: 3 execuções seguidas sem rede", md)
         self.assertIn("| Escola / A | ", md)  # a barra não quebra a tabela
 
+    def test_md_agrupa_resultados_por_firmware(self):
+        r = resumo.montar_resumo([
+            linha("Alex Honório", "falha_print", firmware="4.002.0000000.3.R"),
+            linha("CAIC NVR2", "falha_print", firmware="4.002.0000000.3.R"),
+            linha("Geralda", "aprovada", firmware="4.003.0000000.1.R"),
+            linha("Isaura", "sem_rede"),
+        ], None, {})
+
+        md = resumo._markdown(r)
+
+        self.assertIn("- 4.002.0000000.3.R: falha_print 2", md)
+        self.assertIn("- 4.003.0000000.1.R: aprovada 1", md)
+        self.assertIn("- desconhecido: sem_rede 1", md)
+
+    def test_sem_relatorio_de_firmware_nao_mostra_agrupamento(self):
+        md = resumo._markdown(resumo.montar_resumo([linha("A", "aprovada")], None, {}))
+
+        self.assertNotIn("por firmware", md)
+
     def test_resumo_anterior_e_o_mais_recente_antes_da_execucao_atual(self):
         for nome, resultado in [("2026-10-19_112900", "a"), ("2026-10-30_092200", "b"),
                                 ("2026-11-07_080000", "futuro")]:
