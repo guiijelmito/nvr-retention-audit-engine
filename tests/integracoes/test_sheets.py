@@ -1,6 +1,6 @@
 """Matriz quinzenal enviada ao Google Sheets."""
 
-import math
+import json
 import unittest
 from unittest.mock import Mock, patch
 
@@ -50,9 +50,9 @@ class PlanilhaTests(unittest.TestCase):
         self.assertEqual(payload[2], ["Escola C", "10.0.0.3", "02/09/2026", 38, ""])
         self.assertEqual(payload[3][:3], ["Escola B", "10.0.0.2", "25/10/2026"])
         self.assertEqual(payload[3][4], "Verificar no local")
-        # Comportamento atual (bug conhecido): escola nova recebe NaN nas colunas
-        # antigas; o requests recusa NaN em JSON e o update falha depois do clear().
-        self.assertTrue(math.isnan(payload[3][3]))
+        # Escola nova recebe célula vazia (não NaN) nas colunas de datas anteriores.
+        self.assertEqual(payload[3][3], "")
+        json.dumps(payload, allow_nan=False)
 
     def test_planilha_vazia_recebe_cabecalho_fixo(self):
         _, aba = self.enviar([], [
