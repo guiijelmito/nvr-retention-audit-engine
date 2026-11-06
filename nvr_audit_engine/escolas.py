@@ -13,6 +13,8 @@ from pathlib import Path
 from nvr_audit_engine.log import logger
 
 INTERVALO_AUDITORIA_DIAS = 15
+# A partir de 2 execuções seguidas sem rede, é link/VPN/energia parado, não oscilação.
+LIMITE_OFFLINE_PERSISTENTE = 2
 
 
 class RegistroEscolas:
@@ -105,6 +107,14 @@ class RegistroEscolas:
             nome for nome, dados in self.dados.items()
             if isinstance(dados, dict)
             and dados.get("ultimo_resultado") not in (None, "aprovada")
+        }
+
+    def offline_persistentes(self, limite: int = LIMITE_OFFLINE_PERSISTENTE) -> dict[str, int]:
+        """{escola: execuções seguidas sem rede} das que chegaram a `limite`."""
+        return {
+            nome: dados["falhas_rede_seguidas"]
+            for nome, dados in self.dados.items()
+            if isinstance(dados, dict) and dados.get("falhas_rede_seguidas", 0) >= limite
         }
 
     def _atualizar(self, nome_escola: str, nvr_ip: str, campos: dict) -> None:

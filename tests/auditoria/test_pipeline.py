@@ -181,6 +181,19 @@ class PipelineTests(unittest.TestCase):
         criar_ticket.assert_called_once()
         self.assertEqual(estado["Escola A"]["status"], "aprovada")
 
+    def test_segunda_execucao_seguida_sem_rede_vira_offline_persistente(self):
+        dados = {"Escola A": {"ip": "192.0.2.20", "falhas_rede_seguidas": 1}}
+
+        with self.assertLogs("VerthAudit", level="WARNING") as logs:
+            _, _, _, _, estado, _ = self.executar({}, api_ok=False, dados=dados)
+
+        self.assertEqual(estado["Escola A"]["falhas_rede_seguidas"], 2)
+        self.assertIn(
+            "[OFFLINE PERSISTENTE] 1 NVR(s) sem rede em execuções seguidas; "
+            "acionar a rede: Escola A (192.0.2.20): 2x",
+            "\n".join(logs.output),
+        )
+
     def test_falha_que_nao_e_de_rede_nao_entra_na_segunda_passada(self):
         _, _, _, _, _, sessao = self.executar({}, api_ok=False, motivo_api="401")
 

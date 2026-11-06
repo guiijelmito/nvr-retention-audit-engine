@@ -128,6 +128,17 @@ def auditar_retencao_nvr_com_cloud(
         except OSError as exc:
             logger.error("[ESTADO] Não foi possível registrar a tentativa de %s: %s", nome_escola, exc)
 
+    offline = {
+        nome: vezes for nome, vezes in registro.offline_persistentes().items()
+        if nome in resultados
+    }
+    if offline:
+        logger.warning(
+            "[OFFLINE PERSISTENTE] %d NVR(s) sem rede em execuções seguidas; acionar a rede: %s",
+            len(offline),
+            "; ".join(f"{nome} ({escolas[nome]}): {vezes}x" for nome, vezes in offline.items()),
+        )
+
     if resultados:
         integracoes.enviar_planilha([r.linha for r in resultados.values()])
 
