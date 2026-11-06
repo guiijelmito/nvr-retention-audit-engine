@@ -31,7 +31,7 @@ class Integracoes:
     """Efeitos externos da auditoria; os padrões são os de produção."""
 
     capturar_print: Callable[[str, str, str, int], str | None] = capturar_print_nvr
-    criar_ticket: Callable[[str], bool] = criar_ticket_7lan
+    criar_ticket: Callable[[str, str], bool] = criar_ticket_7lan
     enviar_planilha: Callable[[list[dict]], None] = enviar_para_google_sheets
 
 
@@ -170,7 +170,7 @@ def _gerar_evidencia_e_aprovar(
         )
         return
 
-    ticket_criado = integracoes.criar_ticket(nome_escola)
+    ticket_criado = integracoes.criar_ticket(nome_escola, caminho_evidencia)
     if ticket_criado is not True:
         logger.warning(
             "[ESTADO] %s não aprovada: criação do ticket não foi confirmada.",

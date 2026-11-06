@@ -9,19 +9,18 @@ from playwright.sync_api import sync_playwright
 # Configurações de Acesso e Variáveis de Produção do ticket.7LAN
 from nvr_audit_engine.config import (
     CLIENTE_7LAN as cliente,
-    PASTA_EVIDENCIAS as pasta_destino,
     SENHA_7LAN as senha,
     SOLICITANTE_7LAN as solicitante,
     URL_7LAN as url,
     USUARIO_7LAN as usuario,
 )
-from nvr_audit_engine.evidencias import caminho_evidencia as montar_caminho_evidencia
 from nvr_audit_engine.evidencias import nome_seguro
 from nvr_audit_engine.log import logger
 
 
 def criar_ticket_7lan(
     nome_escola,
+    caminho_evidencia,
     *,
     slow_mo_ms=0,
     headless=None,
@@ -30,8 +29,9 @@ def criar_ticket_7lan(
 ):
     """Função principal de automação de tickets no 7LAN para auditoria NVR.
 
-    Recebe o nome da escola/unidade auditada, realiza o fluxo completo de
-    abertura, anexo de evidências, apontamentos e fechamento do chamado.
+    Recebe o nome da escola/unidade auditada e o print gerado pela captura,
+    realiza o fluxo completo de abertura, anexo de evidências, apontamentos e
+    fechamento do chamado.
     Devolve True assim que a criação do ticket é confirmada pelo
     redirecionamento para a listagem.
     """
@@ -158,11 +158,6 @@ def criar_ticket_7lan(
             logger.info("[TICKET] Ticket criado com sucesso para a unidade: %s", nome_escola)
 
             # --- EVIDÊNCIA E ANEXO ---
-            logger.debug("[DEBUG] 21. Reconstruindo o caminho da evidência localmente...")
-            caminho_evidencia = montar_caminho_evidencia(
-                pasta_destino, nome_escola, datetime.now()
-            )
-
             logger.debug(f"[DEBUG] 22. Verificando se o arquivo existe em: {caminho_evidencia}")
             if os.path.exists(caminho_evidencia):
                 logger.debug(

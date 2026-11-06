@@ -444,7 +444,7 @@ def main() -> int:
         for indice, nome in enumerate(selecionadas, start=1)
     }
 
-    def criar_ticket_dev(nome: str) -> bool:
+    def criar_ticket_dev(nome: str, caminho_evidencia: str) -> bool:
         data_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         titulo = (
             f"[TESTE DEV {ordem_teste[nome]:02d}] Controle de gravação - "
@@ -453,6 +453,7 @@ def main() -> int:
         logger.info("[DEVTOOLS] Título do ticket: %s", titulo)
         return lan7.criar_ticket_7lan(
             nome,
+            caminho_evidencia,
             headless=False,
             slow_mo_ms=PLAYWRIGHT_SLOW_MO_MS,
             confirmar=_confirmar,

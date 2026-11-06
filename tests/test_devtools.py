@@ -66,6 +66,7 @@ class DevtoolsTests(unittest.TestCase):
         )
         criar_ticket.assert_called_once_with(
             "Escola X",
+            str(self.evidencia),
             headless=False,
             slow_mo_ms=0,
             confirmar=devtools._confirmar,

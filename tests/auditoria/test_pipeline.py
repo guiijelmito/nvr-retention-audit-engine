@@ -96,7 +96,7 @@ class PipelineTests(unittest.TestCase):
             consultas[0][:2], ("http://192.0.2.20/cgi-bin/mediaFileFind.cgi", 1)
         )
         capturar.assert_called_once_with("192.0.2.20", "Escola A", "2026", 10)
-        criar_ticket.assert_called_once_with("Escola A")
+        criar_ticket.assert_called_once_with("Escola A", str(self.evidencia))
         self.assertEqual(estado["Escola A"]["status"], "aprovada")
 
     def test_tres_vazios_iniciais_resultam_em_verificar_no_local(self):
@@ -186,12 +186,23 @@ class PipelineTests(unittest.TestCase):
         criar_ticket.assert_not_called()
         self.assertEqual(estado["Escola A"], "192.0.2.20")
 
+    def test_ticket_recebe_o_print_capturado_mesmo_depois_da_meia_noite(self):
+        # A captura gravou o print com a data de ontem; o 7LAN não pode recalcular o nome.
+        print_de_ontem = self.evidencia.with_name("Escola_A_24-10-2026.png")
+        print_de_ontem.write_bytes(b"png")
+
+        _, _, criar_ticket, _, _, _ = self.executar(
+            {1: True, 2: False, 3: False, 4: False}, captura=str(print_de_ontem)
+        )
+
+        criar_ticket.assert_called_once_with("Escola A", str(print_de_ontem))
+
     def test_ticket_nao_confirmado_nao_aprova(self):
         _, _, criar_ticket, _, estado, _ = self.executar(
             {1: True, 2: False, 3: False, 4: False}, ticket=False
         )
 
-        criar_ticket.assert_called_once_with("Escola A")
+        criar_ticket.assert_called_once_with("Escola A", str(self.evidencia))
         self.assertEqual(estado["Escola A"], "192.0.2.20")
         self.assertFalse(self.arquivo_escolas.exists())
 
