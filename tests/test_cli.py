@@ -15,7 +15,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 
 class CliTests(unittest.TestCase):
     def setUp(self):
-        preparar = patch.object(cli, "_preparar_execucao")
+        preparar = patch.object(cli, "_preparar_execucao", return_value=Path("logs/execucao"))
         self.preparar = preparar.start()
         self.addCleanup(preparar.stop)
 
@@ -24,13 +24,17 @@ class CliTests(unittest.TestCase):
             self.assertEqual(cli.main([]), 0)
 
         self.preparar.assert_called_once()
-        auditar.assert_called_once_with()
+        auditar.assert_called_once_with(
+            somente_pendentes=False, pasta_execucao=Path("logs/execucao")
+        )
 
     def test_auditar_pendentes(self):
         with patch.object(pipeline, "auditar_retencao_nvr_com_cloud") as auditar:
             self.assertEqual(cli.main(["auditar", "--pendentes"]), 0)
 
-        auditar.assert_called_once_with(somente_pendentes=True)
+        auditar.assert_called_once_with(
+            somente_pendentes=True, pasta_execucao=Path("logs/execucao")
+        )
 
     def test_devtools_devolve_o_codigo_da_ferramenta(self):
         with patch.object(devtools, "main", return_value=130) as principal:

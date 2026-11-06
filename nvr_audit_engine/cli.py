@@ -8,6 +8,7 @@
 
 import argparse
 import sys
+from pathlib import Path
 
 from nvr_audit_engine import config
 from nvr_audit_engine.log import configurar_logging
@@ -20,9 +21,10 @@ COMANDOS = {
 }
 
 
-def _preparar_execucao() -> None:
+def _preparar_execucao() -> Path:
+    """Cria as pastas e liga o log; devolve logs/AAAA-MM-DD_HHMMSS/ da execução."""
     config.preparar_pastas()
-    configurar_logging(config.LOGS_DIR)
+    return configurar_logging(config.LOGS_DIR)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.argumentos and not somente_pendentes:
         parser.error(f"o comando '{args.comando}' não aceita argumentos: {args.argumentos}")
 
-    _preparar_execucao()
+    pasta_execucao = _preparar_execucao()
     if args.comando == "devtools":
         from nvr_audit_engine import devtools
 
@@ -53,8 +55,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from nvr_audit_engine.auditoria.pipeline import auditar_retencao_nvr_com_cloud
 
-    if somente_pendentes:
-        auditar_retencao_nvr_com_cloud(somente_pendentes=True)
-    else:
-        auditar_retencao_nvr_com_cloud()
+    auditar_retencao_nvr_com_cloud(
+        somente_pendentes=somente_pendentes, pasta_execucao=pasta_execucao
+    )
     return 0

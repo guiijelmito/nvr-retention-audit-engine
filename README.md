@@ -158,7 +158,9 @@ docker compose run --build --rm auditor python main.py firmware
 - Ao mudar dependências, atualize `requirements.txt` e reconstrua com `docker compose build --no-cache`.
 - Ao atualizar Playwright, mantenha a versão em `Dockerfile`/`compose.yaml` alinhada e reconstrua. A versão do Playwright deve combinar com os binários de navegador instalados na imagem, conforme a [documentação do Playwright para Docker](https://playwright.dev/python/docs/docker).
 - Mudanças no código Python entram na imagem na próxima construção; use `docker compose run --build --rm auditor` para executar a versão atual.
-- Para inspecionar logs: `Get-Content .\logs\auditoria_NVR_escolas.log -Tail 100`.
+- Cada execução cria `logs\AAAA-MM-DD_HHMMSS\` com `execucao.log` (log detalhado), `resumo.csv`, `resumo.json` e `resumo.md` (uma linha por escola, totais, mudanças desde a execução anterior e NVRs offline persistentes).
+- Para inspecionar o log mais recente: `Get-Content "$((Get-ChildItem .\logs -Directory | Sort-Object Name | Select-Object -Last 1).FullName)\execucao.log" -Tail 100`.
+- Para auditar só as escolas que falharam na última tentativa: `python main.py auditar --pendentes`.
 - Para remover containers parados: `docker compose down`. Para também apagar resultados locais, remova manualmente as pastas de logs/evidências depois de guardar o que precisar.
 
 ### Levar a imagem para outro computador

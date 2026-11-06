@@ -30,11 +30,12 @@ cli.py ──► auditoria/pipeline.py ──► auditoria/retencao.py      (reg
 
 ## Fluxo de uma auditoria
 
-1. `cli.py` cria `logs/` e a pasta de evidências e liga o log.
+1. `cli.py` cria a pasta de evidências e `logs/AAAA-MM-DD_HHMMSS/`, onde liga o log (`execucao.log`).
 2. `pipeline.py` carrega `data/escolas.json` (`RegistroEscolas`) e pula escolas aprovadas há menos de 15 dias.
 3. Para cada escola: `busca_gravacoes.verificar_api`, depois `retencao.contar_dias_continuos`, que consulta dia a dia via `busca_gravacoes.consultar_dia`.
 4. Resultado completo com dias > 0 e data da gravação mais antiga: print do calendário, chamado no 7LAN e, só com os dois confirmados, `RegistroEscolas.marcar_aprovada`.
-5. No fim, uma única chamada à planilha com as escolas processadas.
+5. Segunda passada só para as escolas que falharam por rede; depois, o resultado de cada escola vai para `data/escolas.json` (`RegistroEscolas.registrar_tentativa`).
+6. No fim, uma única chamada à planilha com as escolas processadas, e o resumo (`auditoria/resumo.py`) na pasta da execução.
 
 ## Onde colocar código novo
 

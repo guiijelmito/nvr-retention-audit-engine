@@ -7,14 +7,17 @@ ao devtools e aos testes trocá-las sem alterar este módulo.
 """
 
 import os
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 import requests
 from requests.auth import HTTPDigestAuth
 
 from nvr_audit_engine import config
+from nvr_audit_engine.auditoria import resumo as resumo_execucao
 from nvr_audit_engine.auditoria.retencao import SEM_DATA, contar_dias_continuos
 from nvr_audit_engine.log import logger
 from nvr_audit_engine.escolas import RegistroEscolas
@@ -47,6 +50,10 @@ class ResultadoEscola:
     linha: dict
     resultado: str  # aprovada, sem_rede, incompleta, verificar_no_local, falha_print, ...
     motivo: str | None = None
+    print_ok: bool = False
+    os_criada: bool = False
+    os_fechada: bool = False
+    duracao_s: int = 0
 
     @property
     def de_rede(self) -> bool:
@@ -58,13 +65,15 @@ def auditar_retencao_nvr_com_cloud(
     escolas: dict[str, str] | None = None,
     integracoes: Integracoes | None = None,
     somente_pendentes: bool = False,
+    pasta_execucao: Path | None = None,
 ):
     """Audita as escolas elegíveis e envia os resultados à planilha.
 
     Sem argumentos usa data/escolas.json e as integrações de produção.
     `escolas` restringe a execução a um subconjunto {nome: ip}.
     As escolas que falharam na última tentativa vêm primeiro; com
-    `somente_pendentes`, só elas são auditadas.
+    `somente_pendentes`, só elas são auditadas. Com `pasta_execucao`, grava
+    ali resumo.csv, resumo.json e resumo.md.
     """
     if registro is None:
         registro = RegistroEscolas.carregar(config.ARQUIVO_ESCOLAS)
@@ -101,7 +110,9 @@ def auditar_retencao_nvr_com_cloud(
             )
             continue
 
-        resultados[nome_escola] = _auditar_escola(registro, integracoes, nome_escola, nvr_ip)
+        resultados[nome_escola] = _auditar_cronometrado(
+            registro, integracoes, nome_escola, nvr_ip
+        )
         print("=" * largura_terminal + "\n")
 
     # NVRs oscilam entre execuções (Padre Donato e Santo Agostinho falharam em 19/10
@@ -114,9 +125,11 @@ def auditar_retencao_nvr_com_cloud(
             ", ".join(falhas_de_rede),
         )
     for nome_escola in falhas_de_rede:
-        resultados[nome_escola] = _auditar_escola(
+        primeira = resultados[nome_escola]
+        resultados[nome_escola] = _auditar_cronometrado(
             registro, integracoes, nome_escola, escolas[nome_escola]
         )
+        resultados[nome_escola].duracao_s += primeira.duracao_s
         print("=" * largura_terminal + "\n")
 
     # Registrado depois das duas passadas, para a segunda não contar como outra tentativa.
@@ -141,6 +154,54 @@ def auditar_retencao_nvr_com_cloud(
 
     if resultados:
         integracoes.enviar_planilha([r.linha for r in resultados.values()])
+
+    if pasta_execucao is not None:
+        _gravar_resumo(pasta_execucao, registro, escolas, resultados, offline)
+
+
+def _gravar_resumo(
+    pasta_execucao: Path,
+    registro: RegistroEscolas,
+    escolas: dict[str, str],
+    resultados: dict[str, ResultadoEscola],
+    offline: dict[str, int],
+) -> None:
+    firmwares = resumo_execucao.firmware_por_ip(config.BASE_DIR / "relatorios_firmware")
+    linhas = []
+    for nome, r in resultados.items():
+        dias = r.linha["Dias Contínuos Válidos"]
+        estado = registro.dados.get(nome)
+        linhas.append({
+            "escola": nome,
+            "ip": escolas[nome],
+            "firmware": firmwares.get(escolas[nome], ""),
+            "resultado": r.resultado,
+            "dias_continuos": dias if isinstance(dias, int) else "",
+            "gravacao_mais_antiga": r.linha["Gravação mais antiga"],
+            "print_ok": r.print_ok,
+            "os_criada": r.os_criada,
+            "os_fechada": r.os_fechada,
+            "motivo_falha": r.motivo,
+            "tentativas": estado.get("tentativas", 0) if isinstance(estado, dict) else 0,
+            "duracao_s": r.duracao_s,
+        })
+    anterior = resumo_execucao.resumo_anterior(pasta_execucao.parent, pasta_execucao)
+    try:
+        resumo_execucao.gravar_resumo(
+            pasta_execucao, resumo_execucao.montar_resumo(linhas, anterior, offline)
+        )
+        logger.info("[RESUMO] Resumo da execução gravado em %s", pasta_execucao)
+    except OSError as exc:
+        logger.error("[RESUMO] Não foi possível gravar o resumo: %s", exc)
+
+
+def _auditar_cronometrado(
+    registro: RegistroEscolas, integracoes: Integracoes, nome_escola: str, nvr_ip: str
+) -> ResultadoEscola:
+    inicio = time.monotonic()
+    resultado = _auditar_escola(registro, integracoes, nome_escola, nvr_ip)
+    resultado.duracao_s = round(time.monotonic() - inicio)
+    return resultado
 
 
 def _auditar_escola(
@@ -222,13 +283,20 @@ def _auditar_escola(
         # Nenhum buraco em LIMITE_DIAS: sem mês para o print, sem OS.
         return ResultadoEscola(linha, "sem_data_para_print", "sem buraco no limite de dias")
     try:
-        resultado, motivo = _gerar_evidencia_e_aprovar(
+        resultado, motivo, print_ok, ticket = _gerar_evidencia_e_aprovar(
             registro, integracoes, nome_escola, nvr_ip, data_fim_hd
         )
     except Exception as exc:
         logger.error("[ERRO EVIDÊNCIA] Falha ao processar evidências: %s", exc)
-        resultado, motivo = "falha_evidencia", str(exc)
-    return ResultadoEscola(linha, resultado, motivo)
+        resultado, motivo, print_ok, ticket = "falha_evidencia", str(exc), False, None
+    return ResultadoEscola(
+        linha,
+        resultado,
+        motivo,
+        print_ok=print_ok,
+        os_criada=bool(ticket and ticket.criada),
+        os_fechada=bool(ticket and ticket.fechada),
+    )
 
 
 def _falha_de_comunicacao(linha: dict, motivo: str | None) -> ResultadoEscola:
@@ -242,10 +310,11 @@ def _gerar_evidencia_e_aprovar(
     nome_escola: str,
     nvr_ip: str,
     data_fim_hd: str,
-) -> tuple[str, str | None]:
+) -> tuple[str, str | None, bool, ResultadoTicket | None]:
     """Print do mês da gravação mais antiga -> ticket -> aprovação persistida.
 
-    Devolve (resultado, motivo): aprovada, falha_print, falha_os ou falha_estado.
+    Devolve (resultado, motivo, print_ok, ticket); resultado é aprovada,
+    falha_print, falha_os ou falha_estado.
     """
     dt_fim = datetime.strptime(data_fim_hd, "%d/%m/%Y")
     ano_str = dt_fim.strftime("%Y")
@@ -266,7 +335,7 @@ def _gerar_evidencia_e_aprovar(
             "[ESTADO] %s não aprovada: evidência não foi capturada.",
             nome_escola,
         )
-        return "falha_print", "print não capturado"
+        return "falha_print", "print não capturado", False, None
 
     resultado = integracoes.criar_ticket(nome_escola, caminho_evidencia)
     if not resultado.concluida and not resultado.salvar_clicado:
@@ -287,7 +356,8 @@ def _gerar_evidencia_e_aprovar(
             resultado.fechada,
             resultado.erro,
         )
-        return "falha_os", f"{situacao}: {resultado.erro}" if resultado.erro else situacao
+        motivo = f"{situacao}: {resultado.erro}" if resultado.erro else situacao
+        return "falha_os", motivo, True, resultado
 
     try:
         concluida_em, proxima_auditoria_em = registro.marcar_aprovada(nome_escola, nvr_ip)
@@ -297,11 +367,11 @@ def _gerar_evidencia_e_aprovar(
             nome_escola,
             exc,
         )
-        return "falha_estado", str(exc)
+        return "falha_estado", str(exc), True, resultado
     logger.info(
         "[ESTADO] %s aprovada em %s; próxima auditoria em %s.",
         nome_escola,
         concluida_em,
         proxima_auditoria_em,
     )
-    return "aprovada", None
+    return "aprovada", None, True, resultado

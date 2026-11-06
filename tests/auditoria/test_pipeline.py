@@ -336,6 +336,41 @@ class PipelineTests(unittest.TestCase):
         )
         self.assertEqual([linha["Escola"] for linha in linhas], ["Falhou"])
 
+    def test_grava_resumo_na_pasta_da_execucao(self):
+        pasta = Path(self.tmp.name) / "logs" / "2026-10-25_100000"
+        pasta.mkdir(parents=True)
+
+        with patch.object(pipeline, "_gravar_resumo", wraps=pipeline._gravar_resumo) as gravar:
+            linhas, *_ = self.executar({1: True, 2: False, 3: False, 4: False})
+            gravar.assert_not_called()  # sem pasta de execução, sem resumo
+
+            registro = RegistroEscolas(self.arquivo_escolas, {"Escola A": "192.0.2.20"})
+            integracoes = Integracoes(
+                capturar_print=Mock(return_value=str(self.evidencia)),
+                criar_ticket=Mock(return_value=OS_CONCLUIDA),
+                enviar_planilha=Mock(),
+            )
+            with (
+                patch.object(retencao, "datetime", DataFixa),
+                patch.object(pipeline, "consultar_dia", side_effect=lambda *a, **k: a[3] == dias_atras(1)),
+                patch.object(pipeline, "verificar_api", return_value=True),
+                patch.object(pipeline.requests, "Session"),
+                redirect_stdout(StringIO()),
+            ):
+                pipeline.auditar_retencao_nvr_com_cloud(
+                    registro=registro, escolas={"Escola A": "192.0.2.20"},
+                    integracoes=integracoes, pasta_execucao=pasta,
+                )
+
+        gravado = json.loads((pasta / "resumo.json").read_text(encoding="utf-8"))
+        escola = gravado["escolas"][0]
+        self.assertEqual(escola["resultado"], "aprovada")
+        self.assertEqual(escola["dias_continuos"], 1)
+        self.assertTrue(escola["print_ok"] and escola["os_criada"] and escola["os_fechada"])
+        self.assertEqual(escola["tentativas"], 0)
+        self.assertEqual(gravado["totais"]["Aprovadas"], 1)
+        self.assertTrue((pasta / "resumo.csv").exists() and (pasta / "resumo.md").exists())
+
     def test_nenhuma_escola_processada_nao_envia_planilha(self):
         linhas, *_ = self.executar({}, unidades={}, dados={})
 
