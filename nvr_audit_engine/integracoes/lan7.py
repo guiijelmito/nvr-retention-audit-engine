@@ -9,6 +9,7 @@ from playwright.sync_api import sync_playwright
 
 # Configurações de Acesso e Variáveis de Produção do ticket.7LAN
 from nvr_audit_engine.config import (
+    HEADLESS,
     LOGS_DIR,
     CLIENTE_7LAN as cliente,
     SENHA_7LAN as senha,
@@ -55,16 +56,9 @@ def criar_ticket_7lan(
     browser = None
     page = None
 
+    if headless is None:
+        headless = HEADLESS
     with sync_playwright() as p:
-        # Em container/servidor não há desktop para o Chromium abrir uma janela.
-        # Mantém o comportamento visível local por padrão e permite headless por env.
-        if headless is None:
-            headless = os.getenv("PLAYWRIGHT_HEADLESS", "false").strip().lower() in {
-                "1",
-                "true",
-                "yes",
-                "on",
-            }
         try:
             browser = p.chromium.launch(headless=headless, slow_mo=slow_mo_ms)
             context = browser.new_context()

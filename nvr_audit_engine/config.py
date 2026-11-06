@@ -46,6 +46,10 @@ ESCOPOS = [
 
 ARQUIVO_ESCOLAS = BASE_DIR / "data" / "escolas.json"
 
+# Navegador do print e do 7LAN: headless por padrão (servidor e Docker não têm janela).
+# PLAYWRIGHT_HEADLESS=false abre o navegador; o devtools sempre abre.
+HEADLESS = os.getenv("PLAYWRIGHT_HEADLESS", "true").strip().lower() not in {"0", "false", "no", "off"}
+
 
 def preparar_pastas() -> None:
     """Garante que as pastas sejam criadas automaticamente se não existirem."""

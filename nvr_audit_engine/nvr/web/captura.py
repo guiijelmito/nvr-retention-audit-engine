@@ -11,7 +11,7 @@ from datetime import datetime
 from playwright.sync_api import sync_playwright
 
 from nvr_audit_engine.config import PASTA_EVIDENCIAS as pasta_destino
-from nvr_audit_engine.config import SENHA, USUARIO
+from nvr_audit_engine.config import HEADLESS, SENHA, USUARIO
 from nvr_audit_engine.evidencias import caminho_evidencia
 from nvr_audit_engine.log import logger
 from nvr_audit_engine.nvr.web.calendario import (
@@ -57,10 +57,12 @@ def capturar_print_nvr(
     ano_alvo,
     mes_num,
     *,
-    headless=True,
+    headless=None,
     slow_mo_ms=0,
     aguardar_em_erro=False,
 ):
+    if headless is None:
+        headless = HEADLESS
     browser = None
     page = None
     playwright = None
