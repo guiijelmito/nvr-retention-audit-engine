@@ -45,9 +45,11 @@ def contar_dias_continuos(
     dias_continuos = 0
     dias_vazios_consecutivos = 0
     data_fim_hd = SEM_DATA
+    # Fixado no início: uma execução que passa da meia-noite consultaria um dia em dobro.
+    hoje = datetime.now()
 
     for dias_atras in range(1, limite_dias + 1):
-        data_alvo = datetime.now() - timedelta(days=dias_atras)
+        data_alvo = hoje - timedelta(days=dias_atras)
         data_str = data_alvo.strftime("%Y-%m-%d")
         encontrou_arquivo = consultar_dia(data_str)
 
@@ -61,9 +63,7 @@ def contar_dias_continuos(
 
         dias_vazios_consecutivos += 1
         if dias_vazios_consecutivos >= limite_buraco:
-            data_objeto = datetime.now() - timedelta(
-                days=dias_atras - dias_vazios_consecutivos
-            )
+            data_objeto = hoje - timedelta(days=dias_atras - dias_vazios_consecutivos)
             data_fim_hd = data_objeto.strftime("%d/%m/%Y")
             break
 

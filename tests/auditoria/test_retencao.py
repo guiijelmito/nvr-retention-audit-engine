@@ -1,6 +1,7 @@
 """Regra de dias contínuos isolada da comunicação com o NVR."""
 
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 from nvr_audit_engine.auditoria import retencao
@@ -32,6 +33,26 @@ class ContagemTests(unittest.TestCase):
         self.assertEqual(consultadas[:2], ["2026-10-24", "2026-10-23"])
         self.assertEqual(resultado, ResultadoRetencao(2, "23/10/2026"))
         self.assertTrue(resultado.completa)
+
+    def test_meia_noite_no_meio_da_contagem_nao_repete_dia(self):
+        class RelogioVirando(datetime):
+            """23:59 na primeira leitura; 00:01 do dia seguinte nas demais."""
+
+            leituras = 0
+
+            @classmethod
+            def now(cls, tz=None):
+                cls.leituras += 1
+                if cls.leituras == 1:
+                    return cls(2026, 10, 24, 23, 59)
+                return cls(2026, 10, 25, 0, 1)
+
+        consultar, consultadas = respostas(True, True, True)
+        with patch.object(retencao, "datetime", RelogioVirando):
+            resultado = contar_dias_continuos(consultar)
+
+        self.assertEqual(consultadas[:3], ["2026-10-23", "2026-10-22", "2026-10-21"])
+        self.assertEqual(resultado, ResultadoRetencao(3, "21/10/2026"))
 
     def test_um_ou_dois_vazios_sao_tolerados(self):
         resultado, _ = self.contar(True, False, False, True, False, False, False)
