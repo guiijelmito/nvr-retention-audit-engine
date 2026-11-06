@@ -17,6 +17,7 @@ from nvr_audit_engine.log import logger
 from nvr_audit_engine.nvr.web.calendario import (
     candidatos_seletor_calendario,
     meses_possiveis,
+    selecionar_calendario_antd,
     selecionar_calendario_extjs,
     selecionar_opcao,
 )
@@ -138,50 +139,58 @@ def capturar_print_nvr(
             page, "Pesquisa/Playback", candidatos_pesquisa()
         )
         botao_pesquisar.click()
+        page.wait_for_timeout(3000)
 
-        botao_abrir_calendario = primeiro_visivel(
-            page,
-            "botão para abrir calendário",
-            [
-                css('button:has(#splitbutton-1392-btnInnerEl)'),
-                css("#splitbutton-1392-btnInnerEl"),
-            ],
-            obrigatorio=False,
-        )
-        if botao_abrir_calendario is not None:
-            logger.info("[PLAYWRIGHT] Abrindo calendário pelo botão ExtJS identificado.")
-            botao_abrir_calendario.click()
-
-        if selecionar_calendario_extjs(page, ano_alvo, mes_num):
+        if selecionar_calendario_antd(page, ano_alvo, mes_num):
             logger.info(
-                "[PLAYWRIGHT] Calendário ExtJS selecionado e confirmado: %02d/%s.",
+                "[PLAYWRIGHT] Calendário Ant Design selecionado: %02d/%s.",
                 mes_num,
                 ano_alvo,
             )
         else:
-            logger.info("[PLAYWRIGHT] Localizando seletor de ano...")
-            controle_ano = primeiro_visivel(
-                page, "seletor de ano", candidatos_seletor_calendario("ano", 0)
-            )
-            selecionar_opcao(
+            botao_abrir_calendario = primeiro_visivel(
                 page,
-                controle_ano,
-                str(ano_alvo),
-                [str(ano_alvo)],
-                "ano",
+                "botão para abrir calendário",
+                [
+                    css('button:has(#splitbutton-1392-btnInnerEl)'),
+                    css("#splitbutton-1392-btnInnerEl"),
+                ],
+                obrigatorio=False,
             )
+            if botao_abrir_calendario is not None:
+                logger.info("[PLAYWRIGHT] Abrindo calendário pelo botão ExtJS identificado.")
+                botao_abrir_calendario.click()
 
-            logger.info("[PLAYWRIGHT] Localizando seletor do mês %s...", mes_num)
-            controle_mes = primeiro_visivel(
-                page, "seletor de mês", candidatos_seletor_calendario("mês", 1)
-            )
-            selecionar_opcao(
-                page,
-                controle_mes,
-                str(mes_num),
-                meses_possiveis(mes_num),
-                "mês",
-            )
+            if selecionar_calendario_extjs(page, ano_alvo, mes_num):
+                logger.info(
+                    "[PLAYWRIGHT] Calendário ExtJS selecionado e confirmado: %02d/%s.",
+                    mes_num,
+                    ano_alvo,
+                )
+            else:
+                logger.info("[PLAYWRIGHT] Localizando seletor de ano...")
+                controle_ano = primeiro_visivel(
+                    page, "seletor de ano", candidatos_seletor_calendario("ano", 0)
+                )
+                selecionar_opcao(
+                    page,
+                    controle_ano,
+                    str(ano_alvo),
+                    [str(ano_alvo)],
+                    "ano",
+                )
+
+                logger.info("[PLAYWRIGHT] Localizando seletor do mês %s...", mes_num)
+                controle_mes = primeiro_visivel(
+                    page, "seletor de mês", candidatos_seletor_calendario("mês", 1)
+                )
+                selecionar_opcao(
+                    page,
+                    controle_mes,
+                    str(mes_num),
+                    meses_possiveis(mes_num),
+                    "mês",
+                )
 
         os.makedirs(pasta_destino, exist_ok=True)
         nome_arquivo = caminho_evidencia(pasta_destino, nome_escola, datetime.now())

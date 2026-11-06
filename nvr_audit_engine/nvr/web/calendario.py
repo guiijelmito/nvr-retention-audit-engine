@@ -222,3 +222,54 @@ def meses_possiveis(mes_num: int) -> list[str]:
         12: ["Dec", "December", "Dez", "Dezembro", "12"],
     }
     return meses[mes_num]
+
+
+MESES_CALENDARIO_ANTD = {
+    1: ["Jan"],
+    2: ["Fev", "Feb"],
+    3: ["Mar"],
+    4: ["Abr", "Apr"],
+    5: ["Mai", "May"],
+    6: ["Jun"],
+    7: ["Jul"],
+    8: ["Ago", "Aug"],
+    9: ["Set", "Sep"],
+    10: ["Out", "Oct"],
+    11: ["Nov"],
+    12: ["Dez", "Dec"],
+}
+
+
+def selecionar_calendario_antd(page, ano_alvo, mes_num: int) -> bool:
+    """Tela Ant Design (#rc_select_2 / #rc_select_3), fluxo validado em campo.
+
+    Devolve False sem tocar na tela quando o NVR não usa esses seletores,
+    para que os outros fluxos sejam tentados.
+    """
+    if page.locator("#rc_select_2").count() == 0 or page.locator("#rc_select_3").count() == 0:
+        return False
+
+    logger.info("[PLAYWRIGHT] Selecionando o ano %s...", ano_alvo)
+    page.locator("#rc_select_2").click(force=True)
+    page.wait_for_timeout(1000)
+    page.locator(f'.ant-select-item-option-content:text-is("{ano_alvo}")').click()
+    page.wait_for_timeout(1500)
+
+    candidatos = MESES_CALENDARIO_ANTD[mes_num]
+    logger.info("[PLAYWRIGHT] Selecionando o mês correspondente (tentando: %s)...", candidatos)
+    page.locator("#rc_select_3").click(force=True)
+    page.wait_for_timeout(1000)
+
+    for mes_txt in candidatos:
+        try:
+            opcao = page.locator(f'.ant-select-item-option-content:text-is("{mes_txt}")')
+            if opcao.is_visible(timeout=1500):
+                opcao.click()
+                page.wait_for_timeout(2000)
+                return True
+        except Exception:
+            continue
+
+    raise ElementoNVRNaoEncontrado(
+        f"Não encontrei o mês {mes_num} no calendário Ant Design; tentei: {candidatos}"
+    )

@@ -18,11 +18,12 @@ class ElementoNVRLocalizado:
     """Encapsula o locator e o frame em que ele foi encontrado."""
 
     def __init__(self, locator, contexto):
-        self.locator = locator
+        # `_alvo`, não `locator`: o atributo esconderia o método Locator.locator().
+        self._alvo = locator
         self.contexto = contexto
 
     def __getattr__(self, nome):
-        return getattr(self.locator, nome)
+        return getattr(self._alvo, nome)
 
 
 def css(seletor: str):
