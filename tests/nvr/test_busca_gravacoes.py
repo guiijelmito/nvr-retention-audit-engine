@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 import requests
+from requests.auth import HTTPDigestAuth
 
 from nvr_audit_engine.nvr import busca_gravacoes
 from tests.apoio import FakeResponse, search_responses
@@ -10,6 +11,8 @@ from tests.apoio import FakeResponse, search_responses
 class BuscaGravacoesRetryTests(unittest.TestCase):
     def setUp(self):
         self.session = Mock(spec=requests.Session)
+        self.session.auth = HTTPDigestAuth("usuario", "senha")
+        self.session.cookies = Mock()
         self.base_url = "http://192.0.2.20/cgi-bin/mediaFileFind.cgi"
 
     @patch.object(busca_gravacoes.time, "sleep")
@@ -113,8 +116,29 @@ class BuscaGravacoesRetryTests(unittest.TestCase):
             self.session, self.base_url, 1, "2026-01-01", "Escola A"
         )
 
+        # Um 401 renova a sessão e repete o dia uma vez; o segundo 401 é inconclusivo.
         self.assertIsNone(result)
-        self.session.get.assert_called_once()
+        self.assertEqual(self.session.get.call_count, 2)
+        self.session.cookies.clear.assert_called_once()
+        sleep.assert_not_called()
+
+    @patch.object(busca_gravacoes.time, "sleep")
+    def test_expired_session_401_is_renewed_and_day_repeated(self, sleep):
+        self.session.get.side_effect = [
+            FakeResponse("result=token-1\n"),
+            FakeResponse("Unauthorized", status_code=401),  # findFile com a sessão vencida
+            FakeResponse("OK\n"),  # close do token
+            *search_responses("found=1\nitems[0].StartTime=2026-06-25 00:00:00\n"),
+        ]
+
+        result = busca_gravacoes.consultar_dia(
+            self.session, self.base_url, 1, "2026-06-25", "Escola A"
+        )
+
+        self.assertIs(result, True)
+        self.session.close.assert_called_once()
+        self.assertEqual(self.session.auth.username, "usuario")
+        self.assertEqual(self.session.auth.password, "senha")
         sleep.assert_not_called()
 
     @patch.object(busca_gravacoes.time, "sleep")

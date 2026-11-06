@@ -11,6 +11,7 @@ from collections.abc import Callable
 from typing import TypeVar
 
 import requests
+from requests.auth import HTTPDigestAuth
 
 from nvr_audit_engine.log import logger
 
@@ -145,6 +146,18 @@ def _consultar_dia_uma_vez(
         _fechar_token(sessao, url_base, token)
 
 
+def _nao_autorizado(exc: requests.exceptions.HTTPError) -> bool:
+    return exc.response is not None and exc.response.status_code == 401
+
+
+def _renovar_sessao(sessao: requests.Session) -> None:
+    """Descarta conexões e o estado Digest para o NVR emitir um nonce novo."""
+    credenciais = sessao.auth
+    sessao.close()
+    sessao.cookies.clear()
+    sessao.auth = HTTPDigestAuth(credenciais.username, credenciais.password)
+
+
 def consultar_dia(
     sessao: requests.Session,
     url_base: str,
@@ -154,16 +167,33 @@ def consultar_dia(
 ) -> bool | None:
     """Retorna True (há gravação), False (vazio confirmado), None (inconclusivo)."""
     def consultar_e_confirmar() -> bool:
-        primeira_consulta = _consultar_dia_uma_vez(sessao, url_base, canal, data_str)
-        if primeira_consulta:
+        if _consultar_dia_uma_vez(sessao, url_base, canal, data_str):
             return True
 
         # Só confirma ausência quando uma segunda consulta completa também responde vazio.
-        segunda_consulta = _consultar_dia_uma_vez(sessao, url_base, canal, data_str)
-        return primeira_consulta or segunda_consulta
+        return _consultar_dia_uma_vez(sessao, url_base, canal, data_str)
+
+    def consultar_com_reautenticacao() -> bool:
+        try:
+            return consultar_e_confirmar()
+        except requests.exceptions.HTTPError as exc:
+            if not _nao_autorizado(exc):
+                raise
+        # A senha já foi aceita em verificar_api: um 401 no meio da contagem vem
+        # da sessão Digest expirada (~1 min em alguns firmwares). Renova e repete
+        # o dia uma vez; um segundo 401 deixa o dia inconclusivo.
+        logger.warning(
+            "[API NVR] %s, canal %s, data %s: NVR recusou a sessão (401); "
+            "renovando a autenticação e repetindo o dia.",
+            escola,
+            canal,
+            data_str,
+        )
+        _renovar_sessao(sessao)
+        return consultar_e_confirmar()
 
     return _com_retentativas(
-        consultar_e_confirmar,
+        consultar_com_reautenticacao,
         f"{escola}, canal {canal}, data {data_str}",
     )
 
