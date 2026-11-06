@@ -40,6 +40,19 @@ class Integracoes:
     enviar_planilha: Callable[[list[dict]], None] = enviar_para_google_sheets
 
 
+@dataclass
+class ResultadoEscola:
+    """Desfecho de uma escola na execução; `linha` é o que vai para a planilha."""
+
+    linha: dict
+    resultado: str  # aprovada, sem_rede, incompleta, verificar_no_local, falha_print, ...
+    motivo: str | None = None
+
+    @property
+    def de_rede(self) -> bool:
+        return self.motivo in MOTIVOS_REDE
+
+
 def auditar_retencao_nvr_com_cloud(
     registro: RegistroEscolas | None = None,
     escolas: dict[str, str] | None = None,
@@ -65,7 +78,7 @@ def auditar_retencao_nvr_com_cloud(
     titulo = " AUDITORIA INTELIGENTE DE GRAVAÇÕES ESCOLARES - VERTH TECNOLOGIAS "
     print("\n" + titulo.center(largura_terminal, "="))
 
-    resultados: dict[str, dict] = {}
+    resultados: dict[str, ResultadoEscola] = {}
 
     for nome_escola, nvr_ip in escolas.items():
         proxima_auditoria = registro.proxima_auditoria_agendada(nome_escola)
@@ -82,10 +95,7 @@ def auditar_retencao_nvr_com_cloud(
 
     # NVRs oscilam entre execuções (Padre Donato e Santo Agostinho falharam em 19/10
     # e passaram em 30/10): falhas de rede ganham mais uma chance no fim.
-    falhas_de_rede = [
-        nome for nome, linha in resultados.items()
-        if linha.get("Motivo da falha") in MOTIVOS_REDE
-    ]
+    falhas_de_rede = [nome for nome, r in resultados.items() if r.de_rede]
     if falhas_de_rede:
         logger.info(
             "[SEGUNDA PASSADA] Repetindo %d escola(s) que falharam por rede: %s",
@@ -98,8 +108,17 @@ def auditar_retencao_nvr_com_cloud(
         )
         print("=" * largura_terminal + "\n")
 
+    # Registrado depois das duas passadas, para a segunda não contar como outra tentativa.
+    for nome_escola, r in resultados.items():
+        try:
+            registro.registrar_tentativa(
+                nome_escola, escolas[nome_escola], r.resultado, r.motivo, r.de_rede
+            )
+        except OSError as exc:
+            logger.error("[ESTADO] Não foi possível registrar a tentativa de %s: %s", nome_escola, exc)
+
     if resultados:
-        integracoes.enviar_planilha(list(resultados.values()))
+        integracoes.enviar_planilha([r.linha for r in resultados.values()])
 
 
 def _auditar_escola(
@@ -107,8 +126,8 @@ def _auditar_escola(
     integracoes: Integracoes,
     nome_escola: str,
     nvr_ip: str,
-) -> dict:
-    """Conectividade -> contagem -> evidência/OS; devolve a linha da planilha."""
+) -> ResultadoEscola:
+    """Conectividade -> contagem -> evidência/OS de uma escola."""
     logger.info("[UNIDADE] Processando unidade: %s - Endereço IP: (%s)", nome_escola, nvr_ip)
     url_base = f"http://{nvr_ip}/cgi-bin/mediaFileFind.cgi"
     sessao = requests.Session()
@@ -122,13 +141,13 @@ def _auditar_escola(
             falha.motivo,
         )
         sessao.close()
-        return {
+        linha = {
             "Escola": nome_escola,
             "IP do NVR": nvr_ip,
             "Dias Contínuos Válidos": "Verificação incompleta (API indisponível)",
             "Gravação mais antiga": SEM_DATA,
-            "Motivo da falha": falha.motivo,
         }
+        return _falha_de_comunicacao(linha, falha.motivo)
 
     try:
         retencao = contar_dias_continuos(
@@ -162,29 +181,37 @@ def _auditar_escola(
         "Dias Contínuos Válidos": valor_dias_celula,
         "Gravação mais antiga": data_fim_hd,
     }
-    if not retencao.completa:
-        linha["Motivo da falha"] = falha.motivo
 
     if not retencao.completa:
         logger.warning("[ALERTA] %s: auditoria incompleta; evidência e ticket não serão gerados.", nome_escola)
-    elif isinstance(valor_dias_celula, int):
-        logger.info(
-            "[OK] %s: %s dias contínuos computados. (Último dia válido: %s)",
-            nome_escola,
-            valor_dias_celula,
-            data_fim_hd,
-        )
-        if data_fim_hd != SEM_DATA:
-            try:
-                _gerar_evidencia_e_aprovar(
-                    registro, integracoes, nome_escola, nvr_ip, data_fim_hd
-                )
-            except Exception as exc:
-                logger.error("[ERRO EVIDÊNCIA] Falha ao processar evidências: %s", exc)
-    else:
-        logger.warning("[ALERTA] %s: %s", nome_escola, valor_dias_celula)
+        return _falha_de_comunicacao(linha, falha.motivo)
 
-    return linha
+    if not isinstance(valor_dias_celula, int):
+        logger.warning("[ALERTA] %s: %s", nome_escola, valor_dias_celula)
+        return ResultadoEscola(linha, "verificar_no_local")
+
+    logger.info(
+        "[OK] %s: %s dias contínuos computados. (Último dia válido: %s)",
+        nome_escola,
+        valor_dias_celula,
+        data_fim_hd,
+    )
+    if data_fim_hd == SEM_DATA:
+        # Nenhum buraco em LIMITE_DIAS: sem mês para o print, sem OS.
+        return ResultadoEscola(linha, "sem_data_para_print", "sem buraco no limite de dias")
+    try:
+        resultado, motivo = _gerar_evidencia_e_aprovar(
+            registro, integracoes, nome_escola, nvr_ip, data_fim_hd
+        )
+    except Exception as exc:
+        logger.error("[ERRO EVIDÊNCIA] Falha ao processar evidências: %s", exc)
+        resultado, motivo = "falha_evidencia", str(exc)
+    return ResultadoEscola(linha, resultado, motivo)
+
+
+def _falha_de_comunicacao(linha: dict, motivo: str | None) -> ResultadoEscola:
+    resultado = "sem_rede" if motivo in MOTIVOS_REDE else "incompleta"
+    return ResultadoEscola(linha, resultado, motivo)
 
 
 def _gerar_evidencia_e_aprovar(
@@ -193,8 +220,11 @@ def _gerar_evidencia_e_aprovar(
     nome_escola: str,
     nvr_ip: str,
     data_fim_hd: str,
-) -> None:
-    """Print do mês da gravação mais antiga -> ticket -> aprovação persistida."""
+) -> tuple[str, str | None]:
+    """Print do mês da gravação mais antiga -> ticket -> aprovação persistida.
+
+    Devolve (resultado, motivo): aprovada, falha_print, falha_os ou falha_estado.
+    """
     dt_fim = datetime.strptime(data_fim_hd, "%d/%m/%Y")
     ano_str = dt_fim.strftime("%Y")
     mes_num = dt_fim.month
@@ -210,7 +240,7 @@ def _gerar_evidencia_e_aprovar(
             "[ESTADO] %s não aprovada: evidência não foi capturada.",
             nome_escola,
         )
-        return
+        return "falha_print", "print não capturado"
 
     resultado = integracoes.criar_ticket(nome_escola, caminho_evidencia)
     if not resultado.concluida and not resultado.salvar_clicado:
@@ -231,19 +261,21 @@ def _gerar_evidencia_e_aprovar(
             resultado.fechada,
             resultado.erro,
         )
-        return
+        return "falha_os", f"{situacao}: {resultado.erro}" if resultado.erro else situacao
 
     try:
         concluida_em, proxima_auditoria_em = registro.marcar_aprovada(nome_escola, nvr_ip)
-        logger.info(
-            "[ESTADO] %s aprovada em %s; próxima auditoria em %s.",
-            nome_escola,
-            concluida_em,
-            proxima_auditoria_em,
-        )
     except OSError as exc:
         logger.error(
             "[ESTADO] Não foi possível persistir aprovação de %s: %s",
             nome_escola,
             exc,
         )
+        return "falha_estado", str(exc)
+    logger.info(
+        "[ESTADO] %s aprovada em %s; próxima auditoria em %s.",
+        nome_escola,
+        concluida_em,
+        proxima_auditoria_em,
+    )
+    return "aprovada", None

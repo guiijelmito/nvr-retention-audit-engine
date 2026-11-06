@@ -73,6 +73,42 @@ class RegistroEscolas:
             agora + timedelta(days=INTERVALO_AUDITORIA_DIAS)
         ).isoformat(timespec="seconds")
 
+        self._atualizar(nome_escola, nvr_ip, {
+            "status": "aprovada",
+            "concluida_em": concluida_em,
+            "proxima_auditoria_em": proxima_auditoria_em,
+        })
+        return concluida_em, proxima_auditoria_em
+
+    def registrar_tentativa(
+        self, nome_escola: str, nvr_ip: str, resultado: str, motivo: str | None, de_rede: bool
+    ) -> None:
+        """Guarda o resultado da execução para a próxima priorizar as que falharam.
+
+        `tentativas` conta execuções seguidas sem aprovação; `falhas_rede_seguidas`
+        conta execuções seguidas em que o NVR não respondeu por rede.
+        """
+        anterior = self.dados.get(nome_escola)
+        anterior = anterior if isinstance(anterior, dict) else {}
+        aprovada = resultado == "aprovada"
+        self._atualizar(nome_escola, nvr_ip, {
+            "ultimo_resultado": resultado,
+            "motivo_falha": None if aprovada else motivo,
+            "tentativas": 0 if aprovada else anterior.get("tentativas", 0) + 1,
+            "falhas_rede_seguidas": anterior.get("falhas_rede_seguidas", 0) + 1 if de_rede else 0,
+            "ultima_tentativa_em": datetime.now().astimezone().isoformat(timespec="seconds"),
+        })
+
+    def pendentes(self) -> set[str]:
+        """Escolas cuja última tentativa registrada não foi aprovada."""
+        return {
+            nome for nome, dados in self.dados.items()
+            if isinstance(dados, dict)
+            and dados.get("ultimo_resultado") not in (None, "aprovada")
+        }
+
+    def _atualizar(self, nome_escola: str, nvr_ip: str, campos: dict) -> None:
+        """Mescla `campos` no registro da escola e grava o JSON de forma atômica."""
         dados_originais = self.dados.get(nome_escola, nvr_ip)
         if isinstance(dados_originais, dict):
             registro = dict(dados_originais)
@@ -80,11 +116,7 @@ class RegistroEscolas:
         else:
             registro = {"ip": nvr_ip}
 
-        registro.update({
-            "status": "aprovada",
-            "concluida_em": concluida_em,
-            "proxima_auditoria_em": proxima_auditoria_em,
-        })
+        registro.update(campos)
         self.dados[nome_escola] = registro
 
         arquivo_temporario = self.arquivo.with_name(f"{self.arquivo.name}.tmp")
@@ -100,5 +132,3 @@ class RegistroEscolas:
             except OSError:
                 pass
             raise
-
-        return concluida_em, proxima_auditoria_em

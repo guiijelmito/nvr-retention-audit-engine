@@ -126,7 +126,8 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(consultas), 3)
         capturar.assert_not_called()
         criar_ticket.assert_not_called()
-        self.assertEqual(estado["Escola A"], "192.0.2.20")
+        self.assertEqual(estado["Escola A"]["ultimo_resultado"], "verificar_no_local")
+        self.assertNotIn("status", estado["Escola A"])
 
     def test_limite_de_dias_sem_buraco_conta_tudo_sem_evidencia(self):
         linhas, capturar, criar_ticket, consultas, _, _ = self.executar(
@@ -161,7 +162,6 @@ class PipelineTests(unittest.TestCase):
             "IP do NVR": "192.0.2.20",
             "Dias Contínuos Válidos": "Verificação incompleta (API indisponível)",
             "Gravação mais antiga": "N/A",
-            "Motivo da falha": "ConnectTimeout",
         }])
         self.assertEqual(consultas, [])
         capturar.assert_not_called()
@@ -209,8 +209,8 @@ class PipelineTests(unittest.TestCase):
 
         capturar.assert_called_once()
         criar_ticket.assert_not_called()
-        self.assertEqual(estado["Escola A"], "192.0.2.20")
-        self.assertFalse(self.arquivo_escolas.exists())
+        self.assertEqual(estado["Escola A"]["ultimo_resultado"], "falha_print")
+        self.assertNotIn("status", estado["Escola A"])
 
     def test_print_inexistente_no_disco_nao_abre_ticket(self):
         _, _, criar_ticket, _, estado, _ = self.executar(
@@ -219,7 +219,8 @@ class PipelineTests(unittest.TestCase):
         )
 
         criar_ticket.assert_not_called()
-        self.assertEqual(estado["Escola A"], "192.0.2.20")
+        self.assertEqual(estado["Escola A"]["ultimo_resultado"], "falha_print")
+        self.assertNotIn("status", estado["Escola A"])
 
     def test_ticket_recebe_o_print_capturado_mesmo_depois_da_meia_noite(self):
         # A captura gravou o print com a data de ontem; o 7LAN não pode recalcular o nome.
@@ -241,8 +242,8 @@ class PipelineTests(unittest.TestCase):
         )
 
         criar_ticket.assert_called_once()
-        self.assertEqual(estado["Escola A"], "192.0.2.20")
-        self.assertFalse(self.arquivo_escolas.exists())
+        self.assertEqual(estado["Escola A"]["ultimo_resultado"], "falha_os")
+        self.assertNotIn("status", estado["Escola A"])
 
     def test_falha_antes_de_salvar_repete_a_os_uma_vez(self):
         falhou_no_formulario = ResultadoTicket(erro="Timeout no campo Cliente")
@@ -261,7 +262,8 @@ class PipelineTests(unittest.TestCase):
         )
 
         self.assertEqual(criar_ticket.call_count, 2)
-        self.assertEqual(estado["Escola A"], "192.0.2.20")
+        self.assertEqual(estado["Escola A"]["ultimo_resultado"], "falha_os")
+        self.assertNotIn("status", estado["Escola A"])
 
     def test_ticket_nao_confirmado_nao_aprova(self):
         _, _, criar_ticket, _, estado, _ = self.executar(
@@ -270,8 +272,8 @@ class PipelineTests(unittest.TestCase):
         )
 
         criar_ticket.assert_called_once_with("Escola A", str(self.evidencia))
-        self.assertEqual(estado["Escola A"], "192.0.2.20")
-        self.assertFalse(self.arquivo_escolas.exists())
+        self.assertEqual(estado["Escola A"]["ultimo_resultado"], "falha_os")
+        self.assertNotIn("status", estado["Escola A"])
 
     def test_escola_aprovada_dentro_da_janela_e_pulada(self):
         dados = {
@@ -351,12 +353,16 @@ class PipelineComCGISimuladaTests(unittest.TestCase):
             capturar_print=Mock(), criar_ticket=Mock(), enviar_planilha=Mock()
         )
 
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        registro = RegistroEscolas(Path(tmp.name) / "escolas.json", {})
+
         with (
             patch.object(retencao, "LIMITE_DIAS", 2),
             redirect_stdout(StringIO()),
         ):
             pipeline.auditar_retencao_nvr_com_cloud(
-                registro=RegistroEscolas(Path("nao-usado.json"), {}),
+                registro=registro,
                 escolas={"Escola A": "192.0.2.20"},
                 integracoes=integracoes,
             )
@@ -366,8 +372,11 @@ class PipelineComCGISimuladaTests(unittest.TestCase):
         row = linhas[0]
         # A linha final é a da segunda passada, em que a rede já não respondia.
         self.assertEqual(row["Dias Contínuos Válidos"], "Verificação incompleta (API indisponível)")
-        self.assertEqual(row["Motivo da falha"], "conexao_caiu")
         self.assertEqual(row["Gravação mais antiga"], "N/A")
+        estado = registro.dados["Escola A"]
+        self.assertEqual(estado["ultimo_resultado"], "sem_rede")
+        self.assertEqual(estado["motivo_falha"], "conexao_caiu")
+        self.assertEqual(estado["tentativas"], 1)  # as duas passadas contam como uma execução
         integracoes.criar_ticket.assert_not_called()
         integracoes.capturar_print.assert_not_called()
         # Queda de conexão no meio da contagem: a segunda passada tenta de novo e falha também.

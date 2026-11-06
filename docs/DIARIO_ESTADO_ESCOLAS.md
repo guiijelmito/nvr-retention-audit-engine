@@ -25,4 +25,16 @@ O motor avalia a elegibilidade antes de abrir uma sessão com o NVR. Unidades de
 
 Ao concluir os três passos, o estado da unidade é atualizado em memória e escrito em `data/escolas.json` com substituição atômica por arquivo temporário, reduzindo o risco de corromper o mapa caso a execução seja interrompida durante a gravação. O Compose monta a pasta `data` como diretório gravável para que a substituição atômica funcione e o estado sobreviva ao encerramento do container.
 
+## Resultado de cada tentativa
+
+No fim de cada execução, depois da segunda passada, toda escola processada recebe no mesmo registro:
+
+- `ultimo_resultado`: `aprovada`, `sem_rede`, `incompleta`, `verificar_no_local`, `falha_print`, `falha_os`, `falha_evidencia`, `falha_estado` ou `sem_data_para_print`.
+- `motivo_falha`: rótulo da falha (por exemplo `ConnectTimeout`, `401`, `print não capturado`), ou `null` quando aprovada.
+- `tentativas`: execuções seguidas sem aprovação; volta a 0 quando a escola é aprovada.
+- `falhas_rede_seguidas`: execuções seguidas em que o NVR não respondeu por rede; volta a 0 quando o NVR responde.
+- `ultima_tentativa_em`: data e hora local com fuso, em ISO 8601.
+
+A segunda passada da mesma execução não conta como outra tentativa. Esses campos não mudam `status`, `concluida_em` nem `proxima_auditoria_em`, que continuam sendo a única regra para pular uma escola.
+
 Este diário cobre persistência e controle de fluxo. Regras de compatibilidade dos endpoints CGI Dahua permanecem em `DIARIO_COMPATIBILIDADE_NVR.md`.

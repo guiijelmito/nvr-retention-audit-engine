@@ -80,5 +80,58 @@ class RegistroEscolasTests(unittest.TestCase):
         self.assertEqual(registro.dados, {"A": {"ip": "10.0.0.1", "status": "pendente"}})
 
 
+class TentativasTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.arquivo = Path(self.tmp.name) / "escolas.json"
+
+    def registrar(self, registro, resultado, motivo=None, de_rede=False):
+        with patch.object(escolas, "datetime", DataFixa):
+            registro.registrar_tentativa("Escola A", "192.0.2.20", resultado, motivo, de_rede)
+        return registro.dados["Escola A"]
+
+    def test_falhas_seguidas_somam_e_aprovacao_zera(self):
+        registro = RegistroEscolas(self.arquivo, {"Escola A": "192.0.2.20"})
+
+        self.registrar(registro, "sem_rede", "ConnectTimeout", de_rede=True)
+        dados = self.registrar(registro, "sem_rede", "ConnectTimeout", de_rede=True)
+        self.assertEqual(dados["tentativas"], 2)
+        self.assertEqual(dados["falhas_rede_seguidas"], 2)
+        self.assertEqual(dados["motivo_falha"], "ConnectTimeout")
+        # Com fuso local, como concluida_em; o fuso depende da máquina.
+        self.assertTrue(dados["ultima_tentativa_em"].startswith("2026-10-25T10:00:00"))
+
+        dados = self.registrar(registro, "falha_print", "print não capturado")
+        self.assertEqual(dados["tentativas"], 3)
+        self.assertEqual(dados["falhas_rede_seguidas"], 0)  # o NVR respondeu
+
+        dados = self.registrar(registro, "aprovada")
+        self.assertEqual(dados["tentativas"], 0)
+        self.assertIsNone(dados["motivo_falha"])
+
+    def test_grava_no_arquivo_sem_perder_campos_de_aprovacao(self):
+        registro = RegistroEscolas(self.arquivo, {
+            "Escola A": {"ip": "192.0.2.20", "status": "aprovada", "concluida_em": "x"},
+        })
+
+        self.registrar(registro, "incompleta", "401")
+
+        gravado = json.loads(self.arquivo.read_text(encoding="utf-8"))["Escola A"]
+        self.assertEqual(gravado["status"], "aprovada")
+        self.assertEqual(gravado["concluida_em"], "x")
+        self.assertEqual(gravado["ultimo_resultado"], "incompleta")
+
+    def test_pendentes_sao_as_que_falharam_na_ultima_tentativa(self):
+        registro = RegistroEscolas(self.arquivo, {
+            "Falhou": {"ip": "1", "ultimo_resultado": "falha_os"},
+            "Aprovada": {"ip": "2", "ultimo_resultado": "aprovada"},
+            "Nunca tentada": {"ip": "3", "status": "pendente"},
+            "Legado": "4",
+        })
+
+        self.assertEqual(registro.pendentes(), {"Falhou"})
+
+
 if __name__ == "__main__":
     unittest.main()
