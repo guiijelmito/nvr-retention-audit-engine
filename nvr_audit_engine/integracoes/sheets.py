@@ -75,15 +75,13 @@ def enviar_para_google_sheets(dados_lista):
         for col in colunas_auditoria:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(df[col])
 
-        # Escola nova fica com NaN nas colunas de datas anteriores; NaN não é JSON
-        # válido e o update falhava depois do clear(), deixando a aba vazia.
+        # Escola nova fica com NaN nas colunas de datas anteriores; NaN não é JSON válido.
         df = df.astype(object).where(df.notna(), "")
         payload = [df.columns.values.tolist()] + df.values.tolist()
         json.dumps(payload, allow_nan=False)
 
-        logger.info("[CLOUD] Limpando a aba da planilha...")
-        aba.clear()
-
+        # Sem clear(): a matriz contém tudo o que foi lido e só cresce, então o
+        # update a partir de A1 sobrescreve a aba; uma falha nele não a deixa vazia.
         logger.info("[CLOUD] Enviando matriz atualizada com a nova coluna...")
         resposta_update = aba.update(payload)
 

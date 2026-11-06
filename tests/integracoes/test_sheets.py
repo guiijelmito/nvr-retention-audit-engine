@@ -39,7 +39,7 @@ class PlanilhaTests(unittest.TestCase):
 
         cliente.open.assert_called_once_with("Gravações escolas 2026")
         cliente.open.return_value.worksheet.assert_called_once_with("Gravações Quinzenais 2026")
-        aba.clear.assert_called_once()
+        aba.clear.assert_not_called()
         payload = aba.update.call_args.args[0]
         self.assertEqual(payload[0], [
             "Escola", "IP do NVR", "Último dia de gravação",
