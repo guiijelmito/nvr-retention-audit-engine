@@ -32,7 +32,7 @@ class DevtoolsTests(unittest.TestCase):
         enviar = Mock()
         saida = StringIO()
 
-        def consultar_dia(sessao, url_base, canal, data_str, escola):
+        def consultar_dia(sessao, url_base, canal, data_str, escola, **_):
             return data_str == self.ultimo_dia
 
         with (

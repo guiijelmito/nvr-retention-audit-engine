@@ -20,7 +20,7 @@ from nvr_audit_engine.log import logger
 from nvr_audit_engine.escolas import RegistroEscolas
 from nvr_audit_engine.integracoes.lan7 import ResultadoTicket, criar_ticket_7lan
 from nvr_audit_engine.integracoes.sheets import enviar_para_google_sheets
-from nvr_audit_engine.nvr.busca_gravacoes import consultar_dia, verificar_api
+from nvr_audit_engine.nvr.busca_gravacoes import FalhaCGI, consultar_dia, verificar_api
 from nvr_audit_engine.nvr.web.captura import capturar_print_nvr
 
 CANAL_AUDITADO = 1
@@ -76,14 +76,20 @@ def auditar_retencao_nvr_com_cloud(
         url_base = f"http://{nvr_ip}/cgi-bin/mediaFileFind.cgi"
         sessao = requests.Session()
         sessao.auth = HTTPDigestAuth(config.USUARIO, config.SENHA)
+        falha = FalhaCGI()
 
-        if not verificar_api(sessao, url_base, nome_escola):
-            logger.warning("[ALERTA] %s: API do NVR indisponível; resultado marcado como inconclusivo.", nome_escola)
+        if not verificar_api(sessao, url_base, nome_escola, falha=falha):
+            logger.warning(
+                "[ALERTA] %s: API do NVR indisponível (%s); resultado marcado como inconclusivo.",
+                nome_escola,
+                falha.motivo,
+            )
             resultados_para_planilha.append({
                 "Escola": nome_escola,
                 "IP do NVR": nvr_ip,
                 "Dias Contínuos Válidos": "Verificação incompleta (API indisponível)",
                 "Gravação mais antiga": SEM_DATA,
+                "Motivo da falha": falha.motivo,
             })
             sessao.close()
             continue
@@ -91,7 +97,7 @@ def auditar_retencao_nvr_com_cloud(
         try:
             retencao = contar_dias_continuos(
                 lambda data_str: consultar_dia(
-                    sessao, url_base, CANAL_AUDITADO, data_str, nome_escola
+                    sessao, url_base, CANAL_AUDITADO, data_str, nome_escola, falha=falha
                 )
             )
         finally:
@@ -99,10 +105,11 @@ def auditar_retencao_nvr_com_cloud(
 
         if not retencao.completa:
             logger.error(
-                "[INCOMPLETO] %s: não foi possível validar %s após as tentativas; "
+                "[INCOMPLETO] %s: não foi possível validar %s após as tentativas (%s); "
                 "a escola não será registrada como resultado completo.",
                 nome_escola,
                 retencao.data_inconclusiva,
+                falha.motivo,
             )
 
         data_fim_hd = retencao.gravacao_mais_antiga
@@ -113,12 +120,15 @@ def auditar_retencao_nvr_com_cloud(
         else:
             valor_dias_celula = retencao.dias_continuos
 
-        resultados_para_planilha.append({
+        linha = {
             "Escola": nome_escola,
             "IP do NVR": nvr_ip,
             "Dias Contínuos Válidos": valor_dias_celula,
             "Gravação mais antiga": data_fim_hd,
-        })
+        }
+        if not retencao.completa:
+            linha["Motivo da falha"] = falha.motivo
+        resultados_para_planilha.append(linha)
 
         if not retencao.completa:
             logger.warning("[ALERTA] %s: auditoria incompleta; evidência e ticket não serão gerados.", nome_escola)

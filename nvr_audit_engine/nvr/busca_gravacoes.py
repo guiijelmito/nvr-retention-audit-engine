@@ -8,10 +8,12 @@ equipamento real e teste automatizado (docs/DIARIO_COMPATIBILIDADE_NVR.md).
 import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TypeVar
 
 import requests
 from requests.auth import HTTPDigestAuth
+from urllib3.exceptions import NewConnectionError
 
 from nvr_audit_engine.log import logger
 
@@ -32,6 +34,42 @@ class RespostaCGIInvalida(Exception):
     """A CGI respondeu, mas o corpo não representa um resultado reconhecido."""
 
 
+# Motivos que indicam rede (link, VPN, energia), não NVR nem firmware.
+MOTIVOS_REDE = {"ConnectTimeout", "ReadTimeout", "conexao_recusada", "conexao_caiu"}
+
+
+@dataclass
+class FalhaCGI:
+    """Motivo da última operação CGI que esgotou as tentativas."""
+
+    motivo: str | None = None
+
+
+def classificar_falha(exc: Exception) -> str:
+    """Rótulo curto da falha para o log, o resumo e a segunda passada.
+
+    ConnectTimeout, ReadTimeout, conexao_recusada, conexao_caiu, 401,
+    http_<código>, resposta_truncada ou resposta_invalida.
+    """
+    # ConnectTimeout também é ConnectionError: tem de ser testado antes.
+    if isinstance(exc, requests.exceptions.ConnectTimeout):
+        return "ConnectTimeout"
+    if isinstance(exc, requests.exceptions.ReadTimeout):
+        return "ReadTimeout"
+    if isinstance(exc, requests.exceptions.HTTPError) and exc.response is not None:
+        codigo = exc.response.status_code
+        return "401" if codigo == 401 else f"http_{codigo}"
+    if isinstance(exc, requests.exceptions.ChunkedEncodingError):
+        return "resposta_truncada"
+    if isinstance(exc, RespostaCGIInvalida):
+        return "resposta_invalida"
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        causa = exc.args[0] if exc.args else None
+        causa = getattr(causa, "reason", causa)  # MaxRetryError embrulha a causa real
+        return "conexao_recusada" if isinstance(causa, NewConnectionError) else "conexao_caiu"
+    return type(exc).__name__
+
+
 def _repetivel(exc: Exception) -> bool:
     if isinstance(exc, RespostaCGIInvalida):
         return True
@@ -49,7 +87,9 @@ def _repetivel(exc: Exception) -> bool:
     )
 
 
-def _com_retentativas(acao: Callable[[], T], contexto: str) -> T | None:
+def _com_retentativas(
+    acao: Callable[[], T], contexto: str, falha: FalhaCGI | None = None
+) -> T | None:
     """Executa uma operação CGI com até três tentativas e espera crescente."""
     for tentativa in range(1, TENTATIVAS_API + 1):
         try:
@@ -57,6 +97,8 @@ def _com_retentativas(acao: Callable[[], T], contexto: str) -> T | None:
         except (requests.exceptions.RequestException, RespostaCGIInvalida) as exc:
             repetivel = _repetivel(exc)
             if not repetivel or tentativa == TENTATIVAS_API:
+                if falha is not None:
+                    falha.motivo = classificar_falha(exc)
                 logger.error(
                     "[API NVR] %s falhou na tentativa %d/%d (%s): %s",
                     contexto,
@@ -169,6 +211,7 @@ def consultar_dia(
     canal: int,
     data_str: str,
     escola: str,
+    falha: FalhaCGI | None = None,
 ) -> bool | None:
     """Retorna True (há gravação), False (vazio confirmado), None (inconclusivo)."""
     def consultar_e_confirmar() -> bool:
@@ -200,13 +243,16 @@ def consultar_dia(
     return _com_retentativas(
         consultar_com_reautenticacao,
         f"{escola}, canal {canal}, data {data_str}",
+        falha,
     )
 
 
-def verificar_api(sessao: requests.Session, url_base: str, escola: str) -> bool:
+def verificar_api(
+    sessao: requests.Session, url_base: str, escola: str, falha: FalhaCGI | None = None
+) -> bool:
     def verificar() -> bool:
         token = _criar_token(sessao, url_base)
         _fechar_token(sessao, url_base, token)
         return True
 
-    return _com_retentativas(verificar, f"conectividade CGI de {escola}") is True
+    return _com_retentativas(verificar, f"conectividade CGI de {escola}", falha) is True

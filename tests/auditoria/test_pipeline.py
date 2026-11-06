@@ -54,12 +54,17 @@ class PipelineTests(unittest.TestCase):
         caminho = str(self.evidencia) if captura == "existente" else captura
         consultas = []
 
-        def consultar_dia(sessao, url_base, canal, data_str, escola):
+        def consultar_dia(sessao, url_base, canal, data_str, escola, **_):
             consultas.append((url_base, canal, data_str, escola))
             for n, resultado in dias.items():
                 if dias_atras(n) == data_str:
                     return resultado
             return False
+
+        def verificar_api(sessao, url_base, escola, falha=None):
+            if not api_ok and falha is not None:
+                falha.motivo = "ConnectTimeout"
+            return api_ok
 
         integracoes = Integracoes(
             capturar_print=Mock(return_value=caminho),
@@ -73,7 +78,7 @@ class PipelineTests(unittest.TestCase):
             patch.object(escolas, "datetime", DataFixa),
             patch.object(retencao, "LIMITE_DIAS", limite_dias),
             patch.object(pipeline, "consultar_dia", side_effect=consultar_dia),
-            patch.object(pipeline, "verificar_api", return_value=api_ok),
+            patch.object(pipeline, "verificar_api", side_effect=verificar_api),
             patch.object(pipeline.requests, "Session", return_value=sessao),
             redirect_stdout(StringIO()),
         ):
@@ -151,6 +156,7 @@ class PipelineTests(unittest.TestCase):
             "IP do NVR": "192.0.2.20",
             "Dias Contínuos Válidos": "Verificação incompleta (API indisponível)",
             "Gravação mais antiga": "N/A",
+            "Motivo da falha": "ConnectTimeout",
         }])
         self.assertEqual(consultas, [])
         capturar.assert_not_called()
@@ -277,7 +283,7 @@ class PipelineTests(unittest.TestCase):
         }), encoding="utf-8")
         auditadas = []
 
-        def consultar_dia(sessao, url_base, canal, data_str, escola):
+        def consultar_dia(sessao, url_base, canal, data_str, escola, **_):
             auditadas.append(escola)
             return False
 
