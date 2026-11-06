@@ -13,7 +13,6 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(BASE_DIR / ".env")
 
 # Pastas de armazenamento
-EVIDENCIAS_DIR = BASE_DIR / "Evidencias_NVR_escolas"
 LOGS_DIR = BASE_DIR / "logs"
 
 # Configurações de Acesso
@@ -37,7 +36,8 @@ ARQUIVO_CREDENCIAIS = (
 )
 NOME_PLANILHA = "Gravações escolas 2026"
 NOME_ABA = "Gravações Quinzenais 2026"
-PASTA_EVIDENCIAS = os.getenv("PASTA_EVIDENCIAS")
+# Sem PASTA_EVIDENCIAS no .env, a captura falhava em todas as escolas (os.makedirs(None)).
+PASTA_EVIDENCIAS = os.getenv("PASTA_EVIDENCIAS") or str(BASE_DIR / "Evidencias_NVR_escolas")
 
 ESCOPOS = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -49,8 +49,8 @@ ARQUIVO_ESCOLAS = BASE_DIR / "data" / "escolas.json"
 
 def preparar_pastas() -> None:
     """Garante que as pastas sejam criadas automaticamente se não existirem."""
-    EVIDENCIAS_DIR.mkdir(parents=True, exist_ok=True)
+    Path(PASTA_EVIDENCIAS).mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"Pasta de Evidências: {EVIDENCIAS_DIR}")
+    print(f"Pasta de Evidências: {PASTA_EVIDENCIAS}")
     print(f"Pasta de Logs: {LOGS_DIR}")
