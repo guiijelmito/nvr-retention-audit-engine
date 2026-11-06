@@ -21,7 +21,7 @@ cli.py ──► auditoria/pipeline.py ──► auditoria/retencao.py      (reg
 | `auditoria/retencao.py` | Regra de dias contínuos. Não faz rede nem disco. | só a biblioteca padrão |
 | `auditoria/pipeline.py` | Ordem dos passos e critérios de aprovação. | tudo abaixo |
 | `escolas.py` | Ler/gravar `data/escolas.json`, agenda de 15 dias. | `config`, `log` |
-| `nvr/` | Tudo que conversa com o NVR (CGI e interface web). | `config`, `log`, `evidencias` |
+| `nvr/` | Tudo que conversa com o NVR (CGI e interface web). | `config`, `log`, `evidencias`; `nvr/firmware.py` também `escolas` (lê a lista de NVRs) |
 | `integracoes/` | Sistemas de terceiros (7LAN, Google). | `config`, `log`, `evidencias` |
 | `config.py`, `log.py`, `evidencias.py` | Base compartilhada, sem efeitos colaterais no import. | biblioteca padrão |
 | `cli.py`, `devtools.py` | Entrada do usuário; únicos que criam pastas e ligam o log. | tudo |

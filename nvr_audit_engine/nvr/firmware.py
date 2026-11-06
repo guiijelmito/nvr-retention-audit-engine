@@ -32,7 +32,8 @@ from urllib.parse import urlsplit
 import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
-from nvr_audit_engine.config import BASE_DIR
+from nvr_audit_engine.config import ARQUIVO_ESCOLAS, BASE_DIR
+from nvr_audit_engine.escolas import RegistroEscolas
 
 logger = logging.getLogger("VerthFirmware")
 
@@ -203,26 +204,16 @@ def consultar_nvr(escola: str, nvr_ip: str, usuario: str, senha: str, timeout: f
 
 
 def carregar_escolas(arquivo: Path | None) -> dict:
-    """Lê {"escola": "ip"} ou o formato com estado {"escola": {"ip": ..., ...}}."""
-    candidatos = [arquivo] if arquivo else [
-        BASE_DIR / "data" / "escolas.json", BASE_DIR / "escolas.json", BASE_DIR / "escolas_teste.json",
-    ]
-    for caminho in candidatos:
-        if caminho and caminho.exists():
-            with open(caminho, "r", encoding="utf-8") as f:
-                dados = json.load(f)
-            escolas = {}
-            for nome, item in dados.items():
-                ip = (item.get("ip") or item.get("host")) if isinstance(item, dict) else item
-                if isinstance(ip, str) and ip.strip():
-                    escolas[nome] = ip.strip()
-                else:
-                    logger.warning(f"Unidade ignorada por não possuir IP válido: {nome}")
-            logger.info(f"Lista de NVRs carregada de {caminho} ({len(escolas)} unidades)")
-            return escolas
-    raise FileNotFoundError(
-        "Nenhuma lista de NVRs encontrada. Crie data/escolas.json ({\"Escola\": \"ip\"}) ou use --arquivo / --ip."
-    )
+    """Lista {escola: ip} com o mesmo leitor da auditoria (data/escolas.json por padrão)."""
+    caminho = arquivo or ARQUIVO_ESCOLAS
+    if not caminho.exists():
+        raise FileNotFoundError(
+            f"Lista de NVRs não encontrada em {caminho}. Crie data/escolas.json "
+            '({"Escola": "ip"}) ou use --arquivo / --ip.'
+        )
+    escolas = RegistroEscolas.carregar(caminho).unidades_com_ip()
+    logger.info(f"Lista de NVRs carregada de {caminho} ({len(escolas)} unidades)")
+    return escolas
 
 
 def salvar_csv(resultados: list[ResultadoNVR], caminho: Path) -> None:

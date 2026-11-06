@@ -39,7 +39,7 @@ class RegistroEscolas:
         for nome_escola, dados_escola in self.dados.items():
             ip_nvr = dados_escola.get("ip") if isinstance(dados_escola, dict) else dados_escola
             if isinstance(ip_nvr, str) and ip_nvr.strip():
-                escolas[nome_escola] = ip_nvr
+                escolas[nome_escola] = ip_nvr.strip()
             else:
                 logger.warning("[CONFIG] Unidade ignorada por não possuir IP válido: %s", nome_escola)
         return escolas

@@ -39,13 +39,17 @@ class FirmwareTests(unittest.TestCase):
             arquivo.write_text(json.dumps({
                 "A": "10.0.0.1",
                 "B": {"ip": " 10.0.0.2 ", "status": "aprovada"},
-                "C": {"host": "10.0.0.3"},
+                "C": {"host": "10.0.0.3"},  # só "ip" é aceito, como na auditoria
                 "D": {"ip": ""},
             }), encoding="utf-8")
 
             escolas = firmware.carregar_escolas(arquivo)
 
-        self.assertEqual(escolas, {"A": "10.0.0.1", "B": "10.0.0.2", "C": "10.0.0.3"})
+        self.assertEqual(escolas, {"A": "10.0.0.1", "B": "10.0.0.2"})
+
+    def test_carregar_escolas_sem_arquivo_explica_o_que_falta(self):
+        with self.assertRaises(FileNotFoundError):
+            firmware.carregar_escolas(Path(tempfile.gettempdir()) / "nao_existe_escolas.json")
 
     def test_consulta_cai_para_basic_quando_digest_e_recusado(self):
         def resposta(status, texto="", cabecalhos=None):
