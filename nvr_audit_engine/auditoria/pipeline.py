@@ -57,11 +57,14 @@ def auditar_retencao_nvr_com_cloud(
     registro: RegistroEscolas | None = None,
     escolas: dict[str, str] | None = None,
     integracoes: Integracoes | None = None,
+    somente_pendentes: bool = False,
 ):
     """Audita as escolas elegíveis e envia os resultados à planilha.
 
     Sem argumentos usa data/escolas.json e as integrações de produção.
     `escolas` restringe a execução a um subconjunto {nome: ip}.
+    As escolas que falharam na última tentativa vêm primeiro; com
+    `somente_pendentes`, só elas são auditadas.
     """
     if registro is None:
         registro = RegistroEscolas.carregar(config.ARQUIVO_ESCOLAS)
@@ -69,6 +72,14 @@ def auditar_retencao_nvr_com_cloud(
         escolas = registro.unidades_com_ip()
     if integracoes is None:
         integracoes = Integracoes()
+
+    pendentes = registro.pendentes()
+    if somente_pendentes:
+        escolas = {nome: ip for nome, ip in escolas.items() if nome in pendentes}
+        logger.info("[PENDENTES] %d escola(s) com falha na última tentativa.", len(escolas))
+    else:
+        # sorted é estável: dentro de cada grupo a ordem do escolas.json é mantida.
+        escolas = dict(sorted(escolas.items(), key=lambda item: item[0] not in pendentes))
 
     try:
         largura_terminal = os.get_terminal_size().columns

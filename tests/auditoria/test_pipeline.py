@@ -49,6 +49,7 @@ class PipelineTests(unittest.TestCase):
         captura: str | None = "existente",
         ticket=OS_CONCLUIDA,
         limite_dias: int = 730,
+        somente_pendentes: bool = False,
     ):
         unidades = {"Escola A": "192.0.2.20"} if unidades is None else unidades
         dados = dict(unidades) if dados is None else dados
@@ -88,7 +89,8 @@ class PipelineTests(unittest.TestCase):
             redirect_stdout(StringIO()),
         ):
             pipeline.auditar_retencao_nvr_com_cloud(
-                registro=registro, escolas=unidades, integracoes=integracoes
+                registro=registro, escolas=unidades, integracoes=integracoes,
+                somente_pendentes=somente_pendentes,
             )
         enviar = integracoes.enviar_planilha
         linhas = enviar.call_args.args[0] if enviar.called else None
@@ -293,6 +295,24 @@ class PipelineTests(unittest.TestCase):
 
         self.assertEqual([linha["Escola"] for linha in linhas], ["Escola B"])
         self.assertEqual({c[3] for c in consultas}, {"Escola B"})
+
+    def test_escolas_que_falharam_vem_primeiro_e_pendentes_roda_so_elas(self):
+        unidades = {"Nunca tentada": "192.0.2.1", "Falhou": "192.0.2.2", "Aprovou": "192.0.2.3"}
+        dados = {
+            "Nunca tentada": "192.0.2.1",
+            "Falhou": {"ip": "192.0.2.2", "ultimo_resultado": "sem_rede"},
+            "Aprovou": {"ip": "192.0.2.3", "ultimo_resultado": "aprovada"},
+        }
+
+        linhas, *_ = self.executar({1: True}, dados=dict(dados), unidades=unidades)
+        self.assertEqual(
+            [linha["Escola"] for linha in linhas], ["Falhou", "Nunca tentada", "Aprovou"]
+        )
+
+        linhas, *_ = self.executar(
+            {1: True}, dados=dict(dados), unidades=unidades, somente_pendentes=True
+        )
+        self.assertEqual([linha["Escola"] for linha in linhas], ["Falhou"])
 
     def test_nenhuma_escola_processada_nao_envia_planilha(self):
         linhas, *_ = self.executar({}, unidades={}, dados={})

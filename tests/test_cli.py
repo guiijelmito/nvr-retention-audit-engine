@@ -26,6 +26,12 @@ class CliTests(unittest.TestCase):
         self.preparar.assert_called_once()
         auditar.assert_called_once_with()
 
+    def test_auditar_pendentes(self):
+        with patch.object(pipeline, "auditar_retencao_nvr_com_cloud") as auditar:
+            self.assertEqual(cli.main(["auditar", "--pendentes"]), 0)
+
+        auditar.assert_called_once_with(somente_pendentes=True)
+
     def test_devtools_devolve_o_codigo_da_ferramenta(self):
         with patch.object(devtools, "main", return_value=130) as principal:
             self.assertEqual(cli.main(["devtools"]), 130)
@@ -41,7 +47,7 @@ class CliTests(unittest.TestCase):
         self.preparar.assert_not_called()
 
     def test_comando_desconhecido_ou_argumento_sobrando_e_recusado(self):
-        for argv in (["apagar"], ["auditar", "--ip", "1.2.3.4"]):
+        for argv in (["apagar"], ["auditar", "--ip", "1.2.3.4"], ["devtools", "--pendentes"]):
             with self.subTest(argv=argv), self.assertRaises(SystemExit) as erro:
                 with patch("sys.stderr"):
                     cli.main(argv)

@@ -1,6 +1,7 @@
 """Ponto de entrada único: `python main.py [comando]`.
 
     python main.py                 # auditoria completa (padrão)
+    python main.py auditar --pendentes   # só as escolas que falharam na última tentativa
     python main.py devtools        # validação interativa em ambiente controlado
     python main.py firmware --ip 10.0.0.5   # inventário de firmware (aceita --help)
 """
@@ -12,7 +13,8 @@ from nvr_audit_engine import config
 from nvr_audit_engine.log import configurar_logging
 
 COMANDOS = {
-    "auditar": "auditoria completa: NVR, print, ticket 7LAN, estado e planilha (padrão)",
+    "auditar": "auditoria completa: NVR, print, ticket 7LAN, estado e planilha (padrão);"
+               " --pendentes roda só as que falharam na última tentativa",
     "devtools": "validação interativa de escolas selecionadas, com confirmações",
     "firmware": "inventário de modelo e firmware dos NVRs (somente leitura)",
 }
@@ -39,7 +41,8 @@ def main(argv: list[str] | None = None) -> int:
 
         return firmware.main(args.argumentos)
 
-    if args.argumentos:
+    somente_pendentes = args.comando == "auditar" and args.argumentos == ["--pendentes"]
+    if args.argumentos and not somente_pendentes:
         parser.error(f"o comando '{args.comando}' não aceita argumentos: {args.argumentos}")
 
     _preparar_execucao()
@@ -50,5 +53,8 @@ def main(argv: list[str] | None = None) -> int:
 
     from nvr_audit_engine.auditoria.pipeline import auditar_retencao_nvr_com_cloud
 
-    auditar_retencao_nvr_com_cloud()
+    if somente_pendentes:
+        auditar_retencao_nvr_com_cloud(somente_pendentes=True)
+    else:
+        auditar_retencao_nvr_com_cloud()
     return 0
