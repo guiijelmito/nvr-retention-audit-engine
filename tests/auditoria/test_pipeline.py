@@ -73,7 +73,7 @@ class PipelineTests(unittest.TestCase):
             return ok
 
         integracoes = Integracoes(
-            capturar_print=Mock(return_value=caminho),
+            capturar_print=Mock(side_effect=caminho if isinstance(caminho, list) else [caminho] * 2),
             criar_ticket=Mock(side_effect=ticket if isinstance(ticket, list) else [ticket]),
             enviar_planilha=Mock(),
         )
@@ -222,10 +222,19 @@ class PipelineTests(unittest.TestCase):
             {1: True, 2: False, 3: False, 4: False}, captura=None
         )
 
-        capturar.assert_called_once()
+        self.assertEqual(capturar.call_count, 2)  # uma nova tentativa antes de desistir
         criar_ticket.assert_not_called()
         self.assertEqual(estado["Escola A"]["ultimo_resultado"], "falha_print")
         self.assertNotIn("status", estado["Escola A"])
+
+    def test_print_que_falha_uma_vez_e_repetido(self):
+        _, capturar, criar_ticket, _, estado, _ = self.executar(
+            {1: True, 2: False, 3: False, 4: False}, captura=[None, str(self.evidencia)]
+        )
+
+        self.assertEqual(capturar.call_count, 2)
+        criar_ticket.assert_called_once_with("Escola A", str(self.evidencia))
+        self.assertEqual(estado["Escola A"]["status"], "aprovada")
 
     def test_print_inexistente_no_disco_nao_abre_ticket(self):
         _, _, criar_ticket, _, estado, _ = self.executar(

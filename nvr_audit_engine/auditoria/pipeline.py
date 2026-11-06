@@ -258,6 +258,10 @@ def _gerar_evidencia_e_aprovar(
     )
     caminho_evidencia = integracoes.capturar_print(nvr_ip, nome_escola, ano_str, mes_num)
     if not caminho_evidencia or not os.path.isfile(caminho_evidencia):
+        # Tela que demorou a carregar costuma passar na segunda; o print não cria nada fora.
+        logger.warning("[EVIDÊNCIA] %s: print não capturado; nova tentativa.", nome_escola)
+        caminho_evidencia = integracoes.capturar_print(nvr_ip, nome_escola, ano_str, mes_num)
+    if not caminho_evidencia or not os.path.isfile(caminho_evidencia):
         logger.warning(
             "[ESTADO] %s não aprovada: evidência não foi capturada.",
             nome_escola,
