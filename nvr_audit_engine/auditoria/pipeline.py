@@ -18,7 +18,7 @@ from nvr_audit_engine import config
 from nvr_audit_engine.auditoria.retencao import SEM_DATA, contar_dias_continuos
 from nvr_audit_engine.log import logger
 from nvr_audit_engine.escolas import RegistroEscolas
-from nvr_audit_engine.integracoes.lan7 import criar_ticket_7lan
+from nvr_audit_engine.integracoes.lan7 import ResultadoTicket, criar_ticket_7lan
 from nvr_audit_engine.integracoes.sheets import enviar_para_google_sheets
 from nvr_audit_engine.nvr.busca_gravacoes import consultar_dia, verificar_api
 from nvr_audit_engine.nvr.web.captura import capturar_print_nvr
@@ -31,7 +31,7 @@ class Integracoes:
     """Efeitos externos da auditoria; os padrões são os de produção."""
 
     capturar_print: Callable[[str, str, str, int], str | None] = capturar_print_nvr
-    criar_ticket: Callable[[str, str], bool] = criar_ticket_7lan
+    criar_ticket: Callable[[str, str], ResultadoTicket] = criar_ticket_7lan
     enviar_planilha: Callable[[list[dict]], None] = enviar_para_google_sheets
 
 
@@ -170,11 +170,24 @@ def _gerar_evidencia_e_aprovar(
         )
         return
 
-    ticket_criado = integracoes.criar_ticket(nome_escola, caminho_evidencia)
-    if ticket_criado is not True:
+    resultado = integracoes.criar_ticket(nome_escola, caminho_evidencia)
+    if not resultado.concluida and not resultado.salvar_clicado:
+        # Nada foi gravado no 7LAN antes do clique em salvar: repetir não duplica a OS.
+        logger.warning("[TICKET] %s: falha antes de salvar a OS; nova tentativa.", nome_escola)
+        resultado = integracoes.criar_ticket(nome_escola, caminho_evidencia)
+    if not resultado.concluida:
+        situacao = (
+            "OS criada mas não concluída (verificar e fechar no 7LAN)"
+            if resultado.criada or resultado.salvar_clicado
+            else "OS não foi criada"
+        )
         logger.warning(
-            "[ESTADO] %s não aprovada: criação do ticket não foi confirmada.",
+            "[ESTADO] %s não aprovada: %s; anexada=%s, fechada=%s, erro: %s",
             nome_escola,
+            situacao,
+            resultado.anexada,
+            resultado.fechada,
+            resultado.erro,
         )
         return
 

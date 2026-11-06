@@ -16,7 +16,14 @@ from nvr_audit_engine.auditoria import pipeline, retencao
 from nvr_audit_engine.auditoria.pipeline import Integracoes
 from nvr_audit_engine.escolas import RegistroEscolas
 from nvr_audit_engine.nvr import busca_gravacoes
-from tests.apoio import REQUESTS_SESSION, DataFixa, FakeResponse, search_responses
+from nvr_audit_engine.integracoes.lan7 import ResultadoTicket
+from tests.apoio import (
+    OS_CONCLUIDA,
+    REQUESTS_SESSION,
+    DataFixa,
+    FakeResponse,
+    search_responses,
+)
 
 
 def dias_atras(n: int) -> str:
@@ -39,7 +46,7 @@ class PipelineTests(unittest.TestCase):
         unidades: dict | None = None,
         api_ok: bool = True,
         captura: str | None = "existente",
-        ticket=True,
+        ticket=OS_CONCLUIDA,
         limite_dias: int = 730,
     ):
         unidades = {"Escola A": "192.0.2.20"} if unidades is None else unidades
@@ -56,7 +63,7 @@ class PipelineTests(unittest.TestCase):
 
         integracoes = Integracoes(
             capturar_print=Mock(return_value=caminho),
-            criar_ticket=Mock(return_value=ticket),
+            criar_ticket=Mock(side_effect=ticket if isinstance(ticket, list) else [ticket]),
             enviar_planilha=Mock(),
         )
         registro = RegistroEscolas(self.arquivo_escolas, dados)
@@ -197,9 +204,41 @@ class PipelineTests(unittest.TestCase):
 
         criar_ticket.assert_called_once_with("Escola A", str(print_de_ontem))
 
+    def test_os_aberta_sem_fechamento_nao_aprova_nem_recria(self):
+        # CEAPI em 30/10: OS criada, timeout no apontamento, escola aprovada com OS aberta.
+        os_aberta = ResultadoTicket(salvar_clicado=True, criada=True, anexada=True,
+                                    erro="Locator.evaluate: Timeout 30000ms exceeded.")
+        _, _, criar_ticket, _, estado, _ = self.executar(
+            {1: True, 2: False, 3: False, 4: False}, ticket=os_aberta
+        )
+
+        criar_ticket.assert_called_once()
+        self.assertEqual(estado["Escola A"], "192.0.2.20")
+        self.assertFalse(self.arquivo_escolas.exists())
+
+    def test_falha_antes_de_salvar_repete_a_os_uma_vez(self):
+        falhou_no_formulario = ResultadoTicket(erro="Timeout no campo Cliente")
+        _, _, criar_ticket, _, estado, _ = self.executar(
+            {1: True, 2: False, 3: False, 4: False},
+            ticket=[falhou_no_formulario, OS_CONCLUIDA],
+        )
+
+        self.assertEqual(criar_ticket.call_count, 2)
+        self.assertEqual(estado["Escola A"]["status"], "aprovada")
+
+    def test_duas_falhas_antes_de_salvar_nao_aprovam(self):
+        falhou = ResultadoTicket(erro="Timeout no login")
+        _, _, criar_ticket, _, estado, _ = self.executar(
+            {1: True, 2: False, 3: False, 4: False}, ticket=[falhou, falhou]
+        )
+
+        self.assertEqual(criar_ticket.call_count, 2)
+        self.assertEqual(estado["Escola A"], "192.0.2.20")
+
     def test_ticket_nao_confirmado_nao_aprova(self):
         _, _, criar_ticket, _, estado, _ = self.executar(
-            {1: True, 2: False, 3: False, 4: False}, ticket=False
+            {1: True, 2: False, 3: False, 4: False},
+            ticket=ResultadoTicket(salvar_clicado=True),
         )
 
         criar_ticket.assert_called_once_with("Escola A", str(self.evidencia))

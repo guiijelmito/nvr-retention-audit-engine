@@ -8,9 +8,9 @@ Uma unidade só recebe `status: "aprovada"` depois de cumprir, na mesma execuç�
 
 1. A API CGI do NVR responde à verificação de conectividade.
 2. A captura do calendário retorna o caminho do print e o arquivo existe.
-3. A automação do 7LAN confirma a criação do ticket após o redirecionamento para a listagem de tickets.
+3. A automação do 7LAN conclui a OS: criada (redirecionamento para a listagem), print anexado e OS fechada. Uma OS criada e deixada aberta não aprova a escola (caso do CEAPI em 30/10/2026).
 
-Sem qualquer um desses resultados, a execução não registra uma nova aprovação. Se a captura falhar, o ticket nem é iniciado. Se a criação do ticket não puder ser confirmada, a unidade continua apta para nova tentativa.
+Sem qualquer um desses resultados, a execução não registra uma nova aprovação. Se a captura falhar, o ticket nem é iniciado. Se a OS não for concluída, a unidade continua apta para nova tentativa. Falha antes do clique em salvar a OS é repetida uma vez na mesma execução; depois do clique, a OS nunca é recriada automaticamente, para não duplicá-la, e o log indica que ela deve ser verificada e fechada no 7LAN.
 
 ## Datas e regra de liberação
 

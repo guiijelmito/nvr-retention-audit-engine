@@ -39,7 +39,7 @@ cli.py ──► auditoria/pipeline.py ──► auditoria/retencao.py      (reg
 ## Onde colocar código novo
 
 - **Outro modelo/firmware de NVR:** variantes de seletor em `nvr/web/localizadores.py`; respostas CGI diferentes em `nvr/busca_gravacoes.py`, sempre com teste em `tests/nvr/` reproduzindo a resposta observada.
-- **Outro helpdesk ou destino de relatório:** novo módulo em `integracoes/` com a mesma assinatura usada por `Integracoes` (`criar_ticket(nome, caminho_evidencia) -> bool`, `enviar_planilha(linhas)`).
+- **Outro helpdesk ou destino de relatório:** novo módulo em `integracoes/` com a mesma assinatura usada por `Integracoes` (`criar_ticket(nome, caminho_evidencia) -> ResultadoTicket`, `enviar_planilha(linhas)`).
 - **OS a partir de foto enviada por WhatsApp:** um subpacote próprio, por exemplo `nvr_audit_engine/whatsapp/` (webhook, fila e confirmação do técnico), reaproveitando `escolas.py`, `evidencias.py` e `integracoes/lan7.py`. Um comando novo entra em `cli.py`.
 - **Consultas somente leitura para outros sistemas** (servidor de API, painel): também um subpacote próprio que lê `escolas.py` e os relatórios, sem importar `pipeline.py`.
 - **Execução por cliente (multi-cliente):** caminhos e nomes da planilha saem de `config.py` para um arquivo por cliente; o resto do código já recebe registro e integrações por parâmetro.

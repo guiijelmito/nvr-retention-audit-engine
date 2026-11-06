@@ -4,7 +4,11 @@ from datetime import datetime
 
 import requests
 
+from nvr_audit_engine.integracoes.lan7 import ResultadoTicket
+
 REQUESTS_SESSION = requests.Session
+
+OS_CONCLUIDA = ResultadoTicket(salvar_clicado=True, criada=True, anexada=True, fechada=True)
 
 
 class DataFixa(datetime):

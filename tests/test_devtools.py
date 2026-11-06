@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 from nvr_audit_engine import config, devtools, escolas
 from nvr_audit_engine.auditoria import pipeline, retencao
 from nvr_audit_engine.integracoes import lan7, sheets
-from tests.apoio import DataFixa
+from tests.apoio import OS_CONCLUIDA, DataFixa
 
 
 class DevtoolsTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class DevtoolsTests(unittest.TestCase):
         self.evidencia.write_bytes(b"png")
         self.ultimo_dia = (datetime(2026, 10, 25) - timedelta(days=1)).strftime("%Y-%m-%d")
 
-    def executar(self, respostas, *, captura=None, ticket=True):
+    def executar(self, respostas, *, captura=None, ticket=OS_CONCLUIDA):
         captura = Mock(return_value=str(self.evidencia)) if captura is None else captura
         criar_ticket = Mock(return_value=ticket)
         enviar = Mock()

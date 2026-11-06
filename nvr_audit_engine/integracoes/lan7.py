@@ -2,6 +2,7 @@
 
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from playwright.sync_api import sync_playwright
@@ -18,6 +19,21 @@ from nvr_audit_engine.evidencias import nome_seguro
 from nvr_audit_engine.log import logger
 
 
+@dataclass
+class ResultadoTicket:
+    """O que o fluxo do 7LAN conseguiu confirmar, etapa por etapa."""
+
+    salvar_clicado: bool = False  # depois deste clique, recriar a OS pode duplicá-la
+    criada: bool = False
+    anexada: bool = False
+    fechada: bool = False
+    erro: str | None = None
+
+    @property
+    def concluida(self) -> bool:
+        return self.criada and self.anexada and self.fechada
+
+
 def criar_ticket_7lan(
     nome_escola,
     caminho_evidencia,
@@ -31,11 +47,9 @@ def criar_ticket_7lan(
 
     Recebe o nome da escola/unidade auditada e o print gerado pela captura,
     realiza o fluxo completo de abertura, anexo de evidências, apontamentos e
-    fechamento do chamado.
-    Devolve True assim que a criação do ticket é confirmada pelo
-    redirecionamento para a listagem.
+    fechamento do chamado. Devolve um ResultadoTicket com as etapas confirmadas.
     """
-    ticket_criado = False
+    resultado = ResultadoTicket()
     nome_limpo = nome_seguro(nome_escola)
     browser = None
     page = None
@@ -147,14 +161,15 @@ def criar_ticket_7lan(
             botao_salvar_ticket = page.locator("button.ant-btn-primary.buttons-open-new-ticket")
             if confirmar is not None and not confirmar(f"Criar/salvar o ticket de {nome_escola}?"):
                 logger.warning("[DEVTOOLS] Criação do ticket cancelada pelo operador.")
-                return False
+                return resultado
+            resultado.salvar_clicado = True
             botao_salvar_ticket.click()
 
             logger.debug(
                 "[DEBUG] 20. Aguardando redirecionamento para a página de listagem/ticket..."
             )
             page.wait_for_url("**/tickets**")
-            ticket_criado = True
+            resultado.criada = True
             logger.info("[TICKET] Ticket criado com sucesso para a unidade: %s", nome_escola)
 
             # --- EVIDÊNCIA E ANEXO ---
@@ -166,6 +181,7 @@ def criar_ticket_7lan(
                 with page.expect_file_chooser() as fc_info:
                     page.click("button:has-text('Anexar arquivo')")
                 fc_info.value.set_files(caminho_evidencia)
+                resultado.anexada = True
                 logger.info(f"[ANEXO] Evidência anexada com sucesso: {caminho_evidencia}")
             else:
                 logger.warning(
@@ -230,12 +246,14 @@ def criar_ticket_7lan(
                 logger.warning(
                     "[DEVTOOLS] Fechamento cancelado pelo operador; o ticket permanece aberto."
                 )
-                return ticket_criado
+                return resultado
             page.click("button:has-text('Salvar e fechar ticket')")
+            resultado.fechada = True
 
             logger.info(f"\n[SUCESSO] OS aberta e concluída para a unidade: {nome_escola}!")
 
         except Exception as e:
+            resultado.erro = str(e)
             logger.error(f"\n[ERRO CRÍTICO] Falha capturada na execução para {nome_escola}!")
             logger.error(f"Detalhes do Erro: {e}")
 
@@ -257,4 +275,4 @@ def criar_ticket_7lan(
                 except Exception as close_error:
                     logger.warning("[TICKET] Falha ao encerrar navegador: %s", close_error)
 
-    return ticket_criado
+    return resultado
