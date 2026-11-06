@@ -9,6 +9,7 @@ from playwright.sync_api import sync_playwright
 
 # Configurações de Acesso e Variáveis de Produção do ticket.7LAN
 from nvr_audit_engine.config import (
+    LOGS_DIR,
     CLIENTE_7LAN as cliente,
     SENHA_7LAN as senha,
     SOLICITANTE_7LAN as solicitante,
@@ -16,7 +17,7 @@ from nvr_audit_engine.config import (
     USUARIO_7LAN as usuario,
 )
 from nvr_audit_engine.evidencias import nome_seguro
-from nvr_audit_engine.log import logger
+from nvr_audit_engine.log import logger, pasta_execucao
 
 
 @dataclass
@@ -259,9 +260,10 @@ def criar_ticket_7lan(
 
             if page is not None:
                 try:
-                    caminho_erro_print = f"erro_snapshot_{nome_limpo}.png"
+                    pasta_erro = pasta_execucao() or LOGS_DIR
+                    caminho_erro_print = str(pasta_erro / f"erro_snapshot_{nome_limpo}.png")
                     page.screenshot(path=caminho_erro_print)
-                    logger.debug(f"[DEBUG] Screenshot de erro salvo em '{caminho_erro_print}'.\n")
+                    logger.info("[TICKET] Screenshot de erro salvo em %s", caminho_erro_print)
                 except Exception as screenshot_error:
                     logger.debug(
                         "[DEBUG] Não foi possível salvar screenshot de erro: %s", screenshot_error

@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from nvr_audit_engine.config import LOGS_DIR
-from nvr_audit_engine.log import logger
+from nvr_audit_engine.log import logger, pasta_execucao
 
 
 def diagnosticar_tela(page, nome_escola: str, ip_nvr: str) -> None:
@@ -67,7 +67,7 @@ def diagnosticar_tela(page, nome_escola: str, ip_nvr: str) -> None:
     try:
         slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", nome_escola).strip("_")[:50]
         horario = datetime.now().strftime("%Y%m%d_%H%M%S")
-        caminho = Path(LOGS_DIR) / f"nvr_ui_{slug}_{horario}.png"
+        caminho = (pasta_execucao() or Path(LOGS_DIR)) / f"nvr_ui_{slug}_{horario}.png"
         page.screenshot(path=str(caminho), full_page=True)
         logger.error("[PLAYWRIGHT DIAGNÓSTICO] Screenshot da falha salvo em %s", caminho)
     except Exception as exc:
