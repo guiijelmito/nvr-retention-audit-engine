@@ -20,7 +20,12 @@ from nvr_audit_engine.log import logger
 from nvr_audit_engine.escolas import RegistroEscolas
 from nvr_audit_engine.integracoes.lan7 import ResultadoTicket, criar_ticket_7lan
 from nvr_audit_engine.integracoes.sheets import enviar_para_google_sheets
-from nvr_audit_engine.nvr.busca_gravacoes import FalhaCGI, consultar_dia, verificar_api
+from nvr_audit_engine.nvr.busca_gravacoes import (
+    MOTIVOS_REDE,
+    FalhaCGI,
+    consultar_dia,
+    verificar_api,
+)
 from nvr_audit_engine.nvr.web.captura import capturar_print_nvr
 
 CANAL_AUDITADO = 1
@@ -60,7 +65,7 @@ def auditar_retencao_nvr_com_cloud(
     titulo = " AUDITORIA INTELIGENTE DE GRAVAÇÕES ESCOLARES - VERTH TECNOLOGIAS "
     print("\n" + titulo.center(largura_terminal, "="))
 
-    resultados_para_planilha = []
+    resultados: dict[str, dict] = {}
 
     for nome_escola, nvr_ip in escolas.items():
         proxima_auditoria = registro.proxima_auditoria_agendada(nome_escola)
@@ -72,87 +77,114 @@ def auditar_retencao_nvr_com_cloud(
             )
             continue
 
-        logger.info("[UNIDADE] Processando unidade: %s - Endereço IP: (%s)", nome_escola, nvr_ip)
-        url_base = f"http://{nvr_ip}/cgi-bin/mediaFileFind.cgi"
-        sessao = requests.Session()
-        sessao.auth = HTTPDigestAuth(config.USUARIO, config.SENHA)
-        falha = FalhaCGI()
-
-        if not verificar_api(sessao, url_base, nome_escola, falha=falha):
-            logger.warning(
-                "[ALERTA] %s: API do NVR indisponível (%s); resultado marcado como inconclusivo.",
-                nome_escola,
-                falha.motivo,
-            )
-            resultados_para_planilha.append({
-                "Escola": nome_escola,
-                "IP do NVR": nvr_ip,
-                "Dias Contínuos Válidos": "Verificação incompleta (API indisponível)",
-                "Gravação mais antiga": SEM_DATA,
-                "Motivo da falha": falha.motivo,
-            })
-            sessao.close()
-            continue
-
-        try:
-            retencao = contar_dias_continuos(
-                lambda data_str: consultar_dia(
-                    sessao, url_base, CANAL_AUDITADO, data_str, nome_escola, falha=falha
-                )
-            )
-        finally:
-            sessao.close()
-
-        if not retencao.completa:
-            logger.error(
-                "[INCOMPLETO] %s: não foi possível validar %s após as tentativas (%s); "
-                "a escola não será registrada como resultado completo.",
-                nome_escola,
-                retencao.data_inconclusiva,
-                falha.motivo,
-            )
-
-        data_fim_hd = retencao.gravacao_mais_antiga
-        if not retencao.completa:
-            valor_dias_celula = "Verificação incompleta (falha da API)"
-        elif retencao.dias_continuos == 0:
-            valor_dias_celula = "Verificar no local"
-        else:
-            valor_dias_celula = retencao.dias_continuos
-
-        linha = {
-            "Escola": nome_escola,
-            "IP do NVR": nvr_ip,
-            "Dias Contínuos Válidos": valor_dias_celula,
-            "Gravação mais antiga": data_fim_hd,
-        }
-        if not retencao.completa:
-            linha["Motivo da falha"] = falha.motivo
-        resultados_para_planilha.append(linha)
-
-        if not retencao.completa:
-            logger.warning("[ALERTA] %s: auditoria incompleta; evidência e ticket não serão gerados.", nome_escola)
-        elif isinstance(valor_dias_celula, int):
-            logger.info(
-                "[OK] %s: %s dias contínuos computados. (Último dia válido: %s)",
-                nome_escola,
-                valor_dias_celula,
-                data_fim_hd,
-            )
-            if data_fim_hd != SEM_DATA:
-                try:
-                    _gerar_evidencia_e_aprovar(
-                        registro, integracoes, nome_escola, nvr_ip, data_fim_hd
-                    )
-                except Exception as exc:
-                    logger.error("[ERRO EVIDÊNCIA] Falha ao processar evidências: %s", exc)
-        else:
-            logger.warning("[ALERTA] %s: %s", nome_escola, valor_dias_celula)
-
+        resultados[nome_escola] = _auditar_escola(registro, integracoes, nome_escola, nvr_ip)
         print("=" * largura_terminal + "\n")
 
-    if resultados_para_planilha:
-        integracoes.enviar_planilha(resultados_para_planilha)
+    # NVRs oscilam entre execuções (Padre Donato e Santo Agostinho falharam em 19/10
+    # e passaram em 30/10): falhas de rede ganham mais uma chance no fim.
+    falhas_de_rede = [
+        nome for nome, linha in resultados.items()
+        if linha.get("Motivo da falha") in MOTIVOS_REDE
+    ]
+    if falhas_de_rede:
+        logger.info(
+            "[SEGUNDA PASSADA] Repetindo %d escola(s) que falharam por rede: %s",
+            len(falhas_de_rede),
+            ", ".join(falhas_de_rede),
+        )
+    for nome_escola in falhas_de_rede:
+        resultados[nome_escola] = _auditar_escola(
+            registro, integracoes, nome_escola, escolas[nome_escola]
+        )
+        print("=" * largura_terminal + "\n")
+
+    if resultados:
+        integracoes.enviar_planilha(list(resultados.values()))
+
+
+def _auditar_escola(
+    registro: RegistroEscolas,
+    integracoes: Integracoes,
+    nome_escola: str,
+    nvr_ip: str,
+) -> dict:
+    """Conectividade -> contagem -> evidência/OS; devolve a linha da planilha."""
+    logger.info("[UNIDADE] Processando unidade: %s - Endereço IP: (%s)", nome_escola, nvr_ip)
+    url_base = f"http://{nvr_ip}/cgi-bin/mediaFileFind.cgi"
+    sessao = requests.Session()
+    sessao.auth = HTTPDigestAuth(config.USUARIO, config.SENHA)
+    falha = FalhaCGI()
+
+    if not verificar_api(sessao, url_base, nome_escola, falha=falha):
+        logger.warning(
+            "[ALERTA] %s: API do NVR indisponível (%s); resultado marcado como inconclusivo.",
+            nome_escola,
+            falha.motivo,
+        )
+        sessao.close()
+        return {
+            "Escola": nome_escola,
+            "IP do NVR": nvr_ip,
+            "Dias Contínuos Válidos": "Verificação incompleta (API indisponível)",
+            "Gravação mais antiga": SEM_DATA,
+            "Motivo da falha": falha.motivo,
+        }
+
+    try:
+        retencao = contar_dias_continuos(
+            lambda data_str: consultar_dia(
+                sessao, url_base, CANAL_AUDITADO, data_str, nome_escola, falha=falha
+            )
+        )
+    finally:
+        sessao.close()
+
+    if not retencao.completa:
+        logger.error(
+            "[INCOMPLETO] %s: não foi possível validar %s após as tentativas (%s); "
+            "a escola não será registrada como resultado completo.",
+            nome_escola,
+            retencao.data_inconclusiva,
+            falha.motivo,
+        )
+
+    data_fim_hd = retencao.gravacao_mais_antiga
+    if not retencao.completa:
+        valor_dias_celula = "Verificação incompleta (falha da API)"
+    elif retencao.dias_continuos == 0:
+        valor_dias_celula = "Verificar no local"
+    else:
+        valor_dias_celula = retencao.dias_continuos
+
+    linha = {
+        "Escola": nome_escola,
+        "IP do NVR": nvr_ip,
+        "Dias Contínuos Válidos": valor_dias_celula,
+        "Gravação mais antiga": data_fim_hd,
+    }
+    if not retencao.completa:
+        linha["Motivo da falha"] = falha.motivo
+
+    if not retencao.completa:
+        logger.warning("[ALERTA] %s: auditoria incompleta; evidência e ticket não serão gerados.", nome_escola)
+    elif isinstance(valor_dias_celula, int):
+        logger.info(
+            "[OK] %s: %s dias contínuos computados. (Último dia válido: %s)",
+            nome_escola,
+            valor_dias_celula,
+            data_fim_hd,
+        )
+        if data_fim_hd != SEM_DATA:
+            try:
+                _gerar_evidencia_e_aprovar(
+                    registro, integracoes, nome_escola, nvr_ip, data_fim_hd
+                )
+            except Exception as exc:
+                logger.error("[ERRO EVIDÊNCIA] Falha ao processar evidências: %s", exc)
+    else:
+        logger.warning("[ALERTA] %s: %s", nome_escola, valor_dias_celula)
+
+    return linha
 
 
 def _gerar_evidencia_e_aprovar(

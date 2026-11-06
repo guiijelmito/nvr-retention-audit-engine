@@ -44,7 +44,8 @@ class PipelineTests(unittest.TestCase):
         *,
         dados: dict | None = None,
         unidades: dict | None = None,
-        api_ok: bool = True,
+        api_ok: bool | list[bool] = True,
+        motivo_api: str = "ConnectTimeout",
         captura: str | None = "existente",
         ticket=OS_CONCLUIDA,
         limite_dias: int = 730,
@@ -61,10 +62,14 @@ class PipelineTests(unittest.TestCase):
                     return resultado
             return False
 
+        # api_ok: um valor para todas as chamadas ou uma lista, uma resposta por chamada.
+        respostas_api = list(api_ok) if isinstance(api_ok, list) else None
+
         def verificar_api(sessao, url_base, escola, falha=None):
-            if not api_ok and falha is not None:
-                falha.motivo = "ConnectTimeout"
-            return api_ok
+            ok = respostas_api.pop(0) if respostas_api is not None else api_ok
+            if not ok and falha is not None:
+                falha.motivo = motivo_api
+            return ok
 
         integracoes = Integracoes(
             capturar_print=Mock(return_value=caminho),
@@ -160,6 +165,23 @@ class PipelineTests(unittest.TestCase):
         }])
         self.assertEqual(consultas, [])
         capturar.assert_not_called()
+        # ConnectTimeout é falha de rede: a escola é tentada de novo na segunda passada.
+        self.assertEqual(sessao.close.call_count, 2)
+
+    def test_segunda_passada_recupera_nvr_que_oscilou(self):
+        linhas, _, criar_ticket, _, estado, _ = self.executar(
+            {1: True, 2: False, 3: False, 4: False}, api_ok=[False, True]
+        )
+
+        self.assertEqual(len(linhas), 1)
+        self.assertEqual(linhas[0]["Dias Contínuos Válidos"], 1)
+        self.assertNotIn("Motivo da falha", linhas[0])
+        criar_ticket.assert_called_once()
+        self.assertEqual(estado["Escola A"]["status"], "aprovada")
+
+    def test_falha_que_nao_e_de_rede_nao_entra_na_segunda_passada(self):
+        _, _, _, _, _, sessao = self.executar({}, api_ok=False, motivo_api="401")
+
         sessao.close.assert_called_once()
 
     def test_aprovacao_grava_estado_atomico_com_intervalo_de_15_dias(self):
@@ -311,14 +333,19 @@ class PipelineComCGISimuladaTests(unittest.TestCase):
     ):
         session = Mock(spec=REQUESTS_SESSION)
         session.auth = None
-        session.get.side_effect = [
+        respostas = iter([
             FakeResponse("result=probe-token\n"),
             FakeResponse("OK\n"),  # cleanup do token de preflight
             *search_responses("found=1\nitems[0].StartTime=2026-01-01 00:00:00\n"),
-            requests.exceptions.ConnectionError("rede instável"),
-            requests.exceptions.ConnectionError("rede instável"),
-            requests.exceptions.ConnectionError("rede instável"),
-        ]
+        ])
+
+        def get(*_, **__):
+            resposta = next(respostas, None)
+            if resposta is None:  # dali em diante a rede não volta
+                raise requests.exceptions.ConnectionError("rede instável")
+            return resposta
+
+        session.get.side_effect = get
         session_factory.return_value = session
         integracoes = Integracoes(
             capturar_print=Mock(), criar_ticket=Mock(), enviar_planilha=Mock()
@@ -334,12 +361,17 @@ class PipelineComCGISimuladaTests(unittest.TestCase):
                 integracoes=integracoes,
             )
 
-        row = integracoes.enviar_planilha.call_args.args[0][0]
-        self.assertEqual(row["Dias Contínuos Válidos"], "Verificação incompleta (falha da API)")
+        linhas = integracoes.enviar_planilha.call_args.args[0]
+        self.assertEqual(len(linhas), 1)
+        row = linhas[0]
+        # A linha final é a da segunda passada, em que a rede já não respondia.
+        self.assertEqual(row["Dias Contínuos Válidos"], "Verificação incompleta (API indisponível)")
+        self.assertEqual(row["Motivo da falha"], "conexao_caiu")
         self.assertEqual(row["Gravação mais antiga"], "N/A")
         integracoes.criar_ticket.assert_not_called()
         integracoes.capturar_print.assert_not_called()
-        session.close.assert_called_once()
+        # Queda de conexão no meio da contagem: a segunda passada tenta de novo e falha também.
+        self.assertEqual(session.close.call_count, 2)
 
 
 if __name__ == "__main__":
