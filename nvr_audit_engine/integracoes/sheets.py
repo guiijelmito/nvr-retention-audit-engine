@@ -26,12 +26,16 @@ def enviar_para_google_sheets(dados_lista):
 
         if len(dados_atuais) > 0:
             cabecalho = dados_atuais[0]
+            if "Escola" not in cabecalho or "IP do NVR" not in cabecalho:
+                # Recomeçar a matriz aqui apagaria o histórico de todas as quinzenas.
+                logger.error(
+                    f"[ERRO] Cabeçalho inesperado na aba '{NOME_ABA}': {cabecalho}. "
+                    "A planilha não foi alterada; corrija as colunas 'Escola' e 'IP do NVR'."
+                )
+                return
             linhas = dados_atuais[1:] if len(dados_atuais) > 1 else []
             df = pd.DataFrame(linhas, columns=cabecalho)
         else:
-            df = pd.DataFrame(columns=["Escola", "IP do NVR", "Último dia de gravação"])
-
-        if "Escola" not in df.columns or "IP do NVR" not in df.columns:
             df = pd.DataFrame(columns=["Escola", "IP do NVR", "Último dia de gravação"])
 
         if "Último dia de gravação" not in df.columns:

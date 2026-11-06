@@ -67,6 +67,20 @@ class PlanilhaTests(unittest.TestCase):
             ["Escola A", "10.0.0.1", "13/10/2026", 12],
         ])
 
+    def test_cabecalho_inesperado_nao_altera_a_planilha(self):
+        atuais = [
+            ["Escolas", "IP do NVR", "Dias Contínuos de Gravação: 10/10/2026"],
+            ["Escola A", "10.0.0.1", "40"],
+        ]
+
+        _, aba = self.enviar(atuais, [
+            {"Escola": "Escola A", "IP do NVR": "10.0.0.1", "Dias Contínuos Válidos": 45,
+             "Gravação mais antiga": "10/09/2026"},
+        ])
+
+        aba.clear.assert_not_called()
+        aba.update.assert_not_called()
+
     def test_erro_da_api_do_google_e_registrado_sem_propagar(self):
         with patch.object(
             sheets.Credentials, "from_service_account_file",
