@@ -26,7 +26,6 @@ Automated enterprise-grade solution engineered to audit multi-channel Network Vi
 - **Automation:** Playwright for Python
 - **HTTP / Auth:** `requests` with HTTP Digest Authentication (NVR proprietary APIs)
 - **Cloud Sync:** `gspread`, `google-auth` (Google Sheets)
-- **Data Handling:** `pandas`
 - **Environment Management:** `python-dotenv`
 
 ---

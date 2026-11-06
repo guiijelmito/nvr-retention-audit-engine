@@ -4,4 +4,3 @@ requests==2.34.2
 python-dotenv==1.2.4
 gspread==6.2.1
 google-auth==2.62.0
-pandas==3.0.6
