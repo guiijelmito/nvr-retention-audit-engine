@@ -11,9 +11,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
-from contextlib import contextmanager
 from datetime import datetime
-from functools import wraps
 from pathlib import Path
 
 from nvr_audit_engine import config
@@ -29,72 +27,6 @@ ARQUIVO_ESTADO_DEV = BASE_DIR / "data" / "devtools_escolas.json"
 ARQUIVO_PARA_RETESTE = BASE_DIR / "escolas_para_reteste.json"
 ARQUIVO_RETESTE_ANTIGO = BASE_DIR / "escolas_falha.json"
 PLAYWRIGHT_SLOW_MO_MS = 0
-
-
-@contextmanager
-def _passo_a_passo_playwright():
-    """Pede Enter antes das ações e neutraliza esperas fixas do Playwright."""
-    from playwright.sync_api import Browser, BrowserContext, FileChooser, Locator, Page
-
-    classes_metodos = {
-        Browser: ("new_context", "new_page"),
-        BrowserContext: ("new_page",),
-        FileChooser: ("set_files",),
-        Page: (
-            "goto", "go_back", "go_forward", "reload", "click", "dblclick",
-            "fill", "type", "press", "select_option", "check", "uncheck",
-            "set_input_files", "wait_for_selector", "wait_for_function", "wait_for_load_state",
-            "wait_for_url", "screenshot", "close",
-        ),
-        Locator: (
-            "click", "dblclick", "fill", "type", "press", "select_option",
-            "check", "uncheck", "set_input_files", "wait_for", "screenshot",
-            "focus", "hover", "evaluate", "is_visible",
-        ),
-    }
-    originais = []
-
-    def criar_wrapper(metodo_original, classe, nome_metodo):
-        @wraps(metodo_original)
-        def wrapper(self, *args, **kwargs):
-            if nome_metodo == "wait_for_timeout":
-                return None
-            try:
-                resposta = input(
-                    f"\n[PLAYWRIGHT] {classe}.{nome_metodo} — "
-                    "pressione Enter para continuar (q para interromper)..."
-                )
-            except EOFError as exc:
-                raise KeyboardInterrupt from exc
-            if resposta.strip().casefold() in {"q", "sair", "cancelar"}:
-                raise KeyboardInterrupt
-            return metodo_original(self, *args, **kwargs)
-
-        return wrapper
-
-    try:
-        for classe, metodos in classes_metodos.items():
-            for nome_metodo in metodos:
-                metodo_original = getattr(classe, nome_metodo, None)
-                if metodo_original is None:
-                    continue
-                originais.append((classe, nome_metodo, metodo_original))
-                setattr(
-                    classe,
-                    nome_metodo,
-                    criar_wrapper(metodo_original, classe.__name__, nome_metodo),
-                )
-
-        # Métodos de espera fixa nos módulos de produção tornam-se no-op apenas
-        # enquanto esta ferramenta está em modo passo a passo.
-        metodo_timeout = getattr(Page, "wait_for_timeout", None)
-        if metodo_timeout is not None:
-            originais.append((Page, "wait_for_timeout", metodo_timeout))
-            setattr(Page, "wait_for_timeout", lambda self, timeout: None)
-        yield
-    finally:
-        for classe, nome_metodo, metodo_original in reversed(originais):
-            setattr(classe, nome_metodo, metodo_original)
 
 
 class _RegistroDev(RegistroEscolas):
@@ -318,16 +250,15 @@ def _executar_captura_direta(
         logger.info("[DEVTOOLS] Captura direta do NVR %s (%s), calendário %02d/%d.",
                     nome, ip, mes, ano)
         try:
-            with _passo_a_passo_playwright():
-                caminho = capturar_print_nvr(
-                    ip,
-                    nome,
-                    ano,
-                    mes,
-                    headless=False,
-                    slow_mo_ms=PLAYWRIGHT_SLOW_MO_MS,
-                    aguardar_em_erro=True,
-                )
+            caminho = capturar_print_nvr(
+                ip,
+                nome,
+                ano,
+                mes,
+                headless=False,
+                slow_mo_ms=PLAYWRIGHT_SLOW_MO_MS,
+                aguardar_em_erro=True,
+            )
         except Exception:
             logger.exception("[DEVTOOLS] Captura direta falhou para %s.", nome)
             caminho = None
@@ -358,7 +289,7 @@ def main() -> int:
     print("\nResumo da execução de desenvolvimento:")
     for nome, ip in selecionadas.items():
         print(f"  {nome}: {ip}")
-    print("  Playwright: navegador visível, passo manual com Enter")
+    print("  Playwright: navegador visível")
     if modo == "2":
         try:
             return _executar_captura_direta(selecionadas, relatorio)
@@ -488,12 +419,11 @@ def main() -> int:
 
     codigo_saida = 0
     try:
-        with _passo_a_passo_playwright():
-            auditar_retencao_nvr_com_cloud(
-                registro=registro_dev,
-                escolas=selecionadas,
-                integracoes=integracoes,
-            )
+        auditar_retencao_nvr_com_cloud(
+            registro=registro_dev,
+            escolas=selecionadas,
+            integracoes=integracoes,
+        )
     except KeyboardInterrupt:
         logger.warning("[DEVTOOLS] Execução interrompida pelo operador.")
         codigo_saida = 130
