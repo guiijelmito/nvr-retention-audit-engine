@@ -1,0 +1,4 @@
+# Normaliza fins de linha: LF no repositório, nativo no checkout.
+* text=auto
+*.sh text eol=lf
+Dockerfile text eol=lf

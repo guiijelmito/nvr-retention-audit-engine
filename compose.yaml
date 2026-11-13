@@ -1,0 +1,18 @@
+services:
+  auditor:
+    image: verth-nvr-audit:local
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      PASTA_EVIDENCIAS: /data/evidencias
+      PLAYWRIGHT_HEADLESS: "true"
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credenciais.json
+    volumes:
+      - ./data:/app/data
+      - ./credenciais.json:/app/credenciais.json:ro
+      - ./logs:/app/logs
+      - ./Evidencias_NVR_escolas:/data/evidencias
+    init: true
+    shm_size: 1gb
