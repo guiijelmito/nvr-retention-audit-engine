@@ -15,6 +15,7 @@ from nvr_audit_engine.config import HEADLESS, SENHA, USUARIO
 from nvr_audit_engine.evidencias import caminho_evidencia
 from nvr_audit_engine.log import logger
 from nvr_audit_engine.nvr.web.calendario import (
+    candidatos_botao_calendario_extjs,
     candidatos_seletor_calendario,
     meses_possiveis,
     selecionar_calendario_antd,
@@ -153,10 +154,7 @@ def capturar_print_nvr(
             botao_abrir_calendario = primeiro_visivel(
                 page,
                 "botão para abrir calendário",
-                [
-                    css('button:has(#splitbutton-1392-btnInnerEl)'),
-                    css("#splitbutton-1392-btnInnerEl"),
-                ],
+                candidatos_botao_calendario_extjs(),
                 obrigatorio=False,
             )
             if botao_abrir_calendario is not None:

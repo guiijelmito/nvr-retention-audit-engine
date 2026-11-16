@@ -22,12 +22,7 @@ def candidatos_seletor_calendario(tipo: str, indice: int):
 
     acessivel = re.compile(regex, re.IGNORECASE)
     candidatos = [
-        # Variante ExtJS observada no HTML enviado; os IDs numéricos podem variar.
-        css(
-            "#monthpicker-1397-yearEl"
-            if tipo == "ano"
-            else "#monthpicker-1397-monthEl"
-        ),
+        # ExtJS (firmware 4.002): o id numérico muda a cada NVR, a classe não.
         css(".x-monthpicker-years" if tipo == "ano" else ".x-monthpicker-months"),
         (f"combobox acessível de {tipo}",
          lambda page: page.get_by_role("combobox", name=acessivel)),
@@ -50,6 +45,16 @@ def candidatos_seletor_calendario(tipo: str, indice: int):
         candidatos.insert(6, css(f'[title*="{termo}" i]'))
         candidatos.insert(7, css(f'button:has-text("{termo}")'))
     return candidatos
+
+
+def candidatos_botao_calendario_extjs():
+    """Botão "Nov 2026" que abre o monthpicker; o id splitbutton-NNNN muda a cada NVR."""
+    rotulo = re.compile(r"^\s*\w{3}\s+\d{4}\s*$")
+    return [
+        ("botão mês/ano ExtJS", lambda page: page.locator(
+            '[id^="splitbutton-"][id$="-btnInnerEl"]'
+        ).filter(has_text=rotulo)),
+    ]
 
 
 def selecionar_calendario_extjs(page, ano_alvo: int, mes_num: int) -> bool:
@@ -123,8 +128,8 @@ def selecionar_calendario_extjs(page, ano_alvo: int, mes_num: int) -> bool:
         page,
         "confirmação OK do calendário ExtJS",
         [
-            css('button:has(#button-1398-btnIconEl)'),
-            css("#button-1398-btnIconEl"),
+            # O primeiro botão da barra do monthpicker é o OK (só ícone, id dinâmico).
+            css(".x-monthpicker-buttons .x-btn"),
             ("botão OK acessível", lambda pagina: pagina.get_by_role(
                 "button", name=re.compile(r"^\s*ok\s*$", re.I)
             )),
