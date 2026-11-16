@@ -156,6 +156,9 @@ def selecionar_calendario_extjs(page, ano_alvo: int, mes_num: int) -> bool:
             "Selecionei ano e mês no monthpicker ExtJS, mas não encontrei o botão OK."
         )
     botao_ok.click()
+    # O seletor fecha com animação; sem esperar, o print sai com ele no meio da tela.
+    meses.wait_for(state="hidden", timeout=5000)
+    page.wait_for_timeout(1000)
     return True
 
 

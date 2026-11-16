@@ -35,7 +35,11 @@ HTML = """
   document.addEventListener("click", e => {{
     e.preventDefault();
     const b = document.body.dataset;
-    b.cliques = (b.cliques ? b.cliques + "|" : "") + e.target.closest("a").textContent.trim();
+    const texto = e.target.closest("a").textContent.trim();
+    b.cliques = (b.cliques ? b.cliques + "|" : "") + texto;
+    if (texto === "OK") setTimeout(() => {{
+      document.querySelector(".x-monthpicker").style.display = "none";
+    }}, 300);
   }});
 </script>
 """.format(
