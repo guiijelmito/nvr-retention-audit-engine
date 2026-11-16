@@ -1,0 +1,274 @@
+"""Abertura, anexo, apontamento e fechamento de chamado no helpdesk 7LAN (Playwright)."""
+
+import os
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+from playwright.sync_api import sync_playwright
+
+# Configurações de Acesso e Variáveis de Produção do ticket.7LAN
+from nvr_audit_engine.config import (
+    HEADLESS,
+    LOGS_DIR,
+    CLIENTE_7LAN as cliente,
+    SENHA_7LAN as senha,
+    SOLICITANTE_7LAN as solicitante,
+    URL_7LAN as url,
+    USUARIO_7LAN as usuario,
+)
+from nvr_audit_engine.evidencias import nome_seguro
+from nvr_audit_engine.log import logger, pasta_execucao
+
+
+@dataclass
+class ResultadoTicket:
+    """O que o fluxo do 7LAN conseguiu confirmar, etapa por etapa."""
+
+    salvar_clicado: bool = False  # depois deste clique, recriar a OS pode duplicá-la
+    criada: bool = False
+    anexada: bool = False
+    fechada: bool = False
+    erro: str | None = None
+
+    @property
+    def concluida(self) -> bool:
+        return self.criada and self.anexada and self.fechada
+
+
+def criar_ticket_7lan(
+    nome_escola,
+    caminho_evidencia,
+    *,
+    slow_mo_ms=0,
+    headless=None,
+    confirmar: Callable[[str], bool] | None = None,
+    titulo_customizado: str | None = None,
+):
+    """Função principal de automação de tickets no 7LAN para auditoria NVR.
+
+    Recebe o nome da escola/unidade auditada e o print gerado pela captura,
+    realiza o fluxo completo de abertura, anexo de evidências, apontamentos e
+    fechamento do chamado. Devolve um ResultadoTicket com as etapas confirmadas.
+    """
+    resultado = ResultadoTicket()
+    nome_limpo = nome_seguro(nome_escola)
+    browser = None
+    page = None
+
+    if headless is None:
+        headless = HEADLESS
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch(headless=headless, slow_mo=slow_mo_ms)
+            context = browser.new_context()
+            page = context.new_page()
+
+            logger.info(f"[PROD] Iniciando processo para a unidade: {nome_escola}")
+
+            logger.debug("[DEBUG] 1. Acessando a URL de login...")
+            page.goto(url)
+
+            logger.debug("[DEBUG] 2. Preenchendo credenciais...")
+            page.fill("#sign_in_form_user_email", usuario)
+            page.fill("#sign_in_form_user_password", senha)
+
+            logger.debug("[DEBUG] 3. Clicando no botão de login...")
+            page.click("button:has-text('Acessar conta'):visible")
+
+            logger.debug("[DEBUG] 4. Aguardando o botão 'Abrir novo ticket' carregar...")
+            botao_novo_ticket = page.locator("button:has-text('Abrir novo ticket')")
+            botao_novo_ticket.wait_for(state="visible", timeout=20000)
+
+            logger.debug("[DEBUG] 5. Clicando em 'Abrir novo ticket'...")
+            botao_novo_ticket.click()
+            logger.debug("[DEBUG] 6. Navegação para novo ticket acionada com sucesso!")
+
+            # --- CAMPOS DO FORMULÁRIO PRINCIPAL ---
+            logger.debug("[DEBUG] 7. Preenchendo Cliente...")
+            page.fill("#service_desk_ticket_client_id", cliente)
+            page.wait_for_timeout(1000)
+            page.press("#service_desk_ticket_client_id", "Enter")
+
+            logger.debug("[DEBUG] 8. Preenchendo Grupo de Equipamento...")
+            page.click("#equipment_group_selected")
+            page.wait_for_timeout(1000)
+            page.press("#equipment_group_selected", "ArrowDown")
+            page.wait_for_timeout(1000)
+            page.press("#equipment_group_selected", "Enter")
+
+            logger.debug("[DEBUG] 9. Preenchendo Mesa/Desk ('Solicitações')...")
+            page.fill("#service_desk_ticket_desk_id", "Solicitações")
+            page.wait_for_timeout(1000)
+            page.press("#service_desk_ticket_desk_id", "Enter")
+
+            # --- POP-UP DO CATÁLOGO DE SERVIÇOS ---
+            logger.debug("[DEBUG] 10. Abrindo o pop-up do Catálogo de Serviços...")
+            page.click("#services_catalogs")
+            page.wait_for_selector(".ant-modal-content")
+
+            logger.debug("[DEBUG] 12. Preenchendo ID do Catálogo...")
+            catalogo_alvo = "Serviços de Monitoramento e Prevenção"
+            page.fill("#services_catalogs_id", catalogo_alvo)
+            page.wait_for_timeout(1000)
+            page.press("#services_catalogs_id", "Enter")
+
+            logger.debug("[DEBUG] 13. Preenchendo Área do Catálogo...")
+            area_alvo = "CFTV e Segurança Eletrônica"
+            page.fill("#services_catalogs_area_id", area_alvo)
+            page.wait_for_timeout(1000)
+            page.press("#services_catalogs_area_id", "Enter")
+
+            logger.debug("[DEBUG] 13.1. Aguardando o campo 'Item' ser destravado em cascata...")
+            page.wait_for_selector("#services_catalogs_item_id:not([disabled])", timeout=10000)
+
+            logger.debug("[DEBUG] 14. Preenchendo Item do Catálogo...")
+            item_alvo = "Controle de acesso"
+            page.fill("#services_catalogs_item_id", item_alvo)
+            page.wait_for_timeout(1000)
+            page.press("#services_catalogs_item_id", "Enter")
+
+            logger.debug("[DEBUG] 15. Salvando o pop-up do Catálogo...")
+            page.click(".ant-modal-footer button.ant-btn-primary:has-text('Salvar')")
+
+            # --- SOLICITANTE, TÍTULO E DESCRIÇÃO ---
+            logger.debug("[DEBUG] 16. Preenchendo Solicitante...")
+            page.fill("#service_desk_ticket_requestor_name:visible", solicitante)
+            page.wait_for_timeout(1000)
+            page.press("#service_desk_ticket_requestor_name:visible", "Enter")
+
+            logger.debug("[DEBUG] 17. Preenchendo Título do Ticket...")
+            titulo_ticket = titulo_customizado or f"Controle de gravação - {nome_escola}"
+            page.fill("#service_desk_ticket_title", titulo_ticket)
+            page.wait_for_timeout(1000)
+
+            logger.debug("[DEBUG] 18. Injetando HTML na descrição (Jodit Editor)...")
+            page.locator(".jodit-wysiwyg").evaluate("""
+          (node) => {
+              node.innerHTML = '<p>Verificação de gravação NVR realizada.</p>';
+              node.dispatchEvent(new Event('input', { bubbles: true }));
+              node.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+      """)
+            page.wait_for_timeout(1000)
+
+            logger.debug("[DEBUG] 19. Salvando o ticket principal...")
+            botao_salvar_ticket = page.locator("button.ant-btn-primary.buttons-open-new-ticket")
+            if confirmar is not None and not confirmar(f"Criar/salvar o ticket de {nome_escola}?"):
+                logger.warning("[DEVTOOLS] Criação do ticket cancelada pelo operador.")
+                return resultado
+            resultado.salvar_clicado = True
+            botao_salvar_ticket.click()
+
+            logger.debug(
+                "[DEBUG] 20. Aguardando redirecionamento para a página de listagem/ticket..."
+            )
+            page.wait_for_url("**/tickets**")
+            resultado.criada = True
+            logger.info("[TICKET] Ticket criado com sucesso para a unidade: %s", nome_escola)
+
+            # --- EVIDÊNCIA E ANEXO ---
+            logger.debug(f"[DEBUG] 22. Verificando se o arquivo existe em: {caminho_evidencia}")
+            if os.path.exists(caminho_evidencia):
+                logger.debug(
+                    "[DEBUG] 23. Arquivo encontrado. Acionando seletor de arquivos para anexo..."
+                )
+                with page.expect_file_chooser() as fc_info:
+                    page.click("button:has-text('Anexar arquivo')")
+                fc_info.value.set_files(caminho_evidencia)
+                resultado.anexada = True
+                logger.info(f"[ANEXO] Evidência anexada com sucesso: {caminho_evidencia}")
+            else:
+                logger.warning(
+                    f"[AVISO] Nenhum print encontrado em '{caminho_evidencia}'. Ticket"
+                    f" criado sem anexo."
+                )
+
+            # --- ABA DE APONTAMENTOS ---
+            logger.debug("[DEBUG] 24. Clicando na aba 'Apontamentos'...")
+            aba_apontamentos = page.locator(".ant-tabs-tab:has-text('Apontamentos')")
+            aba_apontamentos.wait_for(state="visible", timeout=10000)
+            aba_apontamentos.click()
+
+            logger.debug("[DEBUG] 25. Clicando no botão '+ Apontamento'...")
+            btn_novo_apontamento = page.locator("button.ant-btn-primary:has-text('Apontamento')")
+            btn_novo_apontamento.wait_for(state="visible", timeout=10000)
+            btn_novo_apontamento.click()
+
+            logger.debug("[DEBUG] 26. Selecionando a opção 'N1'...")
+            btn_n1 = page.locator("button:has-text('N1')")
+            btn_n1.wait_for(state="visible", timeout=10000)
+            btn_n1.click()
+
+            logger.debug("[DEBUG] Alterando estágio e assumindo o ticket...")
+            botao_assumir = page.locator(
+                "button.ant-btn-primary:has-text('Alterar estágio e assumir ticket')"
+            )
+            botao_assumir.wait_for(state="visible", timeout=10000)
+            botao_assumir.click()
+            page.wait_for_timeout(1000)
+
+            logger.debug("[DEBUG] 27. Preenchendo Data e Horários do Apontamento...")
+            data_atual = datetime.now().strftime("%d/%m/%Y")
+
+            # Bula o 'readonly' do campo de data do Ant Design via JS
+            page.locator("#newAppointment_open").evaluate(
+                f"""(node) => {{
+              node.value = '{data_atual}';
+              node.dispatchEvent(new Event('input', {{ bubbles: true }}));
+              node.dispatchEvent(new Event('change', {{ bubbles: true }}));
+          }}"""
+            )
+            page.wait_for_timeout(500)
+
+            agora = datetime.now()
+            hora_inicio = agora.strftime("%H:%M")
+            hora_fim = (agora + timedelta(minutes=2)).strftime("%H:%M")
+
+            page.fill("#newAppointment_init_time", hora_inicio)
+            page.fill("#newAppointment_end_time", hora_fim)
+            page.wait_for_timeout(500)
+
+            logger.debug("[DEBUG] 28. Preenchendo descrição do apontamento...")
+            texto_apontamento = "Verificado a gravação das câmeras no NVR.\nOk."
+            page.fill("#newAppointment_description", texto_apontamento)
+            page.wait_for_timeout(500)
+
+            logger.debug("[DEBUG] 29. Clicando em 'Salvar e fechar ticket'...")
+            if confirmar is not None and not confirmar(
+                f"Salvar apontamento e fechar o ticket de {nome_escola}?"
+            ):
+                logger.warning(
+                    "[DEVTOOLS] Fechamento cancelado pelo operador; o ticket permanece aberto."
+                )
+                return resultado
+            page.click("button:has-text('Salvar e fechar ticket')")
+            resultado.fechada = True
+
+            logger.info(f"\n[SUCESSO] OS aberta e concluída para a unidade: {nome_escola}!")
+
+        except Exception as e:
+            resultado.erro = str(e)
+            logger.error(f"\n[ERRO CRÍTICO] Falha capturada na execução para {nome_escola}!")
+            logger.error(f"Detalhes do Erro: {e}")
+
+            if page is not None:
+                try:
+                    pasta_erro = pasta_execucao() or LOGS_DIR
+                    caminho_erro_print = str(pasta_erro / f"erro_snapshot_{nome_limpo}.png")
+                    page.screenshot(path=caminho_erro_print)
+                    logger.info("[TICKET] Screenshot de erro salvo em %s", caminho_erro_print)
+                except Exception as screenshot_error:
+                    logger.debug(
+                        "[DEBUG] Não foi possível salvar screenshot de erro: %s", screenshot_error
+                    )
+
+        finally:
+            logger.debug("[DEBUG] 30. Fechando navegador.")
+            if browser is not None:
+                try:
+                    browser.close()
+                except Exception as close_error:
+                    logger.warning("[TICKET] Falha ao encerrar navegador: %s", close_error)
+
+    return resultado

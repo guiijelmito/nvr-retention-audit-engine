@@ -1,0 +1,25 @@
+# A imagem só copia main.py e o pacote nvr_audit_engine; o resto fica fora do contexto.
+.git
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+*.egg-info
+.env
+.env.*
+!.env.example
+escolas*.json
+data/
+credenciais.json
+logs
+Evidencias_NVR_escolas
+Evidencias_OS
+relatorios_firmware
+docs
+tests
+*.png
+*.log
+*.tar
