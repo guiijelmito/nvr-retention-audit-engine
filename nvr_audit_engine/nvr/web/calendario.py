@@ -133,8 +133,13 @@ def selecionar_calendario_extjs(page, ano_alvo: int, mes_num: int) -> bool:
         page,
         "confirmação OK do calendário ExtJS",
         [
-            # O primeiro botão da barra do monthpicker é o OK (só ícone, id dinâmico).
+            # OK do monthpicker: id button-NNNN muda a cada NVR; o texto "OK" e a posição não.
+            css('.x-monthpicker .x-btn:has-text("OK")'),
+            css('.x-monthpicker [id^="button-"][id$="-btnIconEl"]'),
             css(".x-monthpicker-buttons .x-btn"),
+            ("texto OK", lambda pagina: pagina.get_by_text(
+                re.compile(r"^\s*ok\s*$", re.I)
+            )),
             ("botão OK acessível", lambda pagina: pagina.get_by_role(
                 "button", name=re.compile(r"^\s*ok\s*$", re.I)
             )),
