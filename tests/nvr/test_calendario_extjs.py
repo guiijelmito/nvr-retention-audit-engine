@@ -84,6 +84,17 @@ class CalendarioExtjsTests(unittest.TestCase):
         # A ordem no DOM é em colunas (Jan, Jul, Fev...): o mês tem de sair pelo texto.
         self.assertEqual(self.page.evaluate("window.cliques"), ["2026", "Set", "OK"])
 
+    def test_espera_a_coluna_de_meses_aparecer(self):
+        # No Alex Honório (16/11) a coluna de meses ficou visível depois da de anos.
+        self.page.evaluate("""() => {
+            const meses = document.querySelector('.x-monthpicker-months');
+            meses.style.display = 'none';
+            setTimeout(() => { meses.style.display = ''; }, 800);
+        }""")
+
+        self.assertTrue(selecionar_calendario_extjs(self.page, 2026, 10))
+        self.assertEqual(self.page.evaluate("window.cliques"), ["2026", "Out", "OK"])
+
 
 if __name__ == "__main__":
     unittest.main()

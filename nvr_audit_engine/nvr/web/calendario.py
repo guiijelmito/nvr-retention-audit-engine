@@ -59,19 +59,24 @@ def candidatos_botao_calendario_extjs():
 
 def selecionar_calendario_extjs(page, ano_alvo: int, mes_num: int) -> bool:
     """Seleciona ano/mês no monthpicker ExtJS e confirma em OK."""
-    meses = primeiro_visivel(
-        page,
-        "box de mês ExtJS",
-        candidatos_seletor_calendario("mês", 1),
-        obrigatorio=False,
-    )
-    anos = primeiro_visivel(
-        page,
-        "box de ano ExtJS",
-        candidatos_seletor_calendario("ano", 0),
-        obrigatorio=False,
-    )
-    if meses is None or anos is None:
+    # O monthpicker abre com animação: a coluna de meses aparece depois da de anos.
+    for _ in range(10):
+        meses = primeiro_visivel(
+            page,
+            "box de mês ExtJS",
+            candidatos_seletor_calendario("mês", 1),
+            obrigatorio=False,
+        )
+        anos = primeiro_visivel(
+            page,
+            "box de ano ExtJS",
+            candidatos_seletor_calendario("ano", 0),
+            obrigatorio=False,
+        )
+        if meses is not None and anos is not None:
+            break
+        page.wait_for_timeout(300)
+    else:
         return False
 
     opcoes_ano = anos.locator(".x-monthpicker-year a")
