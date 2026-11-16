@@ -336,6 +336,18 @@ class PipelineTests(unittest.TestCase):
         )
         self.assertEqual([linha["Escola"] for linha in linhas], ["Falhou"])
 
+    def test_resumo_anterior_corrompido_nao_derruba_a_execucao(self):
+        logs = Path(self.tmp.name) / "logs"
+        (logs / "2026-10-24_100000").mkdir(parents=True)
+        (logs / "2026-10-24_100000" / "resumo.json").write_text('{"escolas": [', encoding="utf-8")
+        pasta = logs / "2026-10-25_100000"
+        pasta.mkdir()
+
+        with self.assertLogs(level="ERROR"):
+            pipeline._gravar_resumo(
+                pasta, RegistroEscolas(self.arquivo_escolas, {}), {}, {}, {}
+            )
+
     def test_grava_resumo_na_pasta_da_execucao(self):
         pasta = Path(self.tmp.name) / "logs" / "2026-10-25_100000"
         pasta.mkdir(parents=True)

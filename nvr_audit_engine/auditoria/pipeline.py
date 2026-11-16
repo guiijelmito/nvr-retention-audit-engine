@@ -166,32 +166,33 @@ def _gravar_resumo(
     resultados: dict[str, ResultadoEscola],
     offline: dict[str, int],
 ) -> None:
-    firmwares = resumo_execucao.firmware_por_ip(config.BASE_DIR / "relatorios_firmware")
-    linhas = []
-    for nome, r in resultados.items():
-        dias = r.linha["Dias Contínuos Válidos"]
-        estado = registro.dados.get(nome)
-        linhas.append({
-            "escola": nome,
-            "ip": escolas[nome],
-            "firmware": firmwares.get(escolas[nome], ""),
-            "resultado": r.resultado,
-            "dias_continuos": dias if isinstance(dias, int) else "",
-            "gravacao_mais_antiga": r.linha["Gravação mais antiga"],
-            "print_ok": r.print_ok,
-            "os_criada": r.os_criada,
-            "os_fechada": r.os_fechada,
-            "motivo_falha": r.motivo,
-            "tentativas": estado.get("tentativas", 0) if isinstance(estado, dict) else 0,
-            "duracao_s": r.duracao_s,
-        })
-    anterior = resumo_execucao.resumo_anterior(pasta_execucao.parent, pasta_execucao)
+    # Um resumo.json anterior pela metade ou CSV de firmware sem coluna ip não derruba a execução.
     try:
+        firmwares = resumo_execucao.firmware_por_ip(config.BASE_DIR / "relatorios_firmware")
+        linhas = []
+        for nome, r in resultados.items():
+            dias = r.linha["Dias Contínuos Válidos"]
+            estado = registro.dados.get(nome)
+            linhas.append({
+                "escola": nome,
+                "ip": escolas[nome],
+                "firmware": firmwares.get(escolas[nome], ""),
+                "resultado": r.resultado,
+                "dias_continuos": dias if isinstance(dias, int) else "",
+                "gravacao_mais_antiga": r.linha["Gravação mais antiga"],
+                "print_ok": r.print_ok,
+                "os_criada": r.os_criada,
+                "os_fechada": r.os_fechada,
+                "motivo_falha": r.motivo,
+                "tentativas": estado.get("tentativas", 0) if isinstance(estado, dict) else 0,
+                "duracao_s": r.duracao_s,
+            })
+        anterior = resumo_execucao.resumo_anterior(pasta_execucao.parent, pasta_execucao)
         resumo_execucao.gravar_resumo(
             pasta_execucao, resumo_execucao.montar_resumo(linhas, anterior, offline)
         )
         logger.info("[RESUMO] Resumo da execução gravado em %s", pasta_execucao)
-    except OSError as exc:
+    except (OSError, ValueError, KeyError) as exc:
         logger.error("[RESUMO] Não foi possível gravar o resumo: %s", exc)
 
 
