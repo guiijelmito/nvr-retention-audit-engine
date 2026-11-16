@@ -81,6 +81,35 @@ class PlanilhaTests(unittest.TestCase):
         aba.clear.assert_not_called()
         aba.update.assert_not_called()
 
+    def test_duas_colunas_sem_titulo_nao_alteram_a_planilha(self):
+        atuais = [
+            ["Escola", "IP do NVR", "", ""],
+            ["Escola A", "10.0.0.1", "nota 1", "nota 2"],
+        ]
+
+        _, aba = self.enviar(atuais, [
+            {"Escola": "Escola A", "IP do NVR": "10.0.0.1", "Dias Contínuos Válidos": 45,
+             "Gravação mais antiga": "10/09/2026"},
+        ])
+
+        aba.update.assert_not_called()
+
+    def test_celula_nan_continua_texto_e_nao_trava_o_envio(self):
+        atuais = [
+            ["Escola", "IP do NVR", "Dias Contínuos de Gravação: 10/10/2026"],
+            ["Escola A", "10.0.0.1", "nan"],
+            ["Escola B", "10.0.0.2", "inf"],
+        ]
+
+        _, aba = self.enviar(atuais, [
+            {"Escola": "Escola A", "IP do NVR": "10.0.0.1", "Dias Contínuos Válidos": 45,
+             "Gravação mais antiga": "10/09/2026"},
+        ])
+
+        payload = aba.update.call_args.args[0]
+        coluna = payload[0].index("Dias Contínuos de Gravação: 10/10/2026")
+        self.assertEqual([linha[coluna] for linha in payload[1:]], ["nan", "inf"])
+
     def test_erro_da_api_do_google_e_registrado_sem_propagar(self):
         with patch.object(
             sheets.Credentials, "from_service_account_file",

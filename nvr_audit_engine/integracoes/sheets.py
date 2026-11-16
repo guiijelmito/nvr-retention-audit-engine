@@ -1,4 +1,5 @@
 import json
+import math
 from datetime import datetime
 from google.oauth2.service_account import Credentials
 import gspread
@@ -18,9 +19,11 @@ def _numero(valor):
         return valor
     for tipo in (int, float):
         try:
-            return tipo(valor)
+            numero = tipo(valor)
         except ValueError:
-            pass
+            continue
+        # "nan"/"inf" virariam float e travariam o envio (allow_nan=False).
+        return numero if math.isfinite(numero) else valor
     return valor
 
 
@@ -32,7 +35,12 @@ def montar_matriz(dados_atuais: list[list], dados_lista: list[dict], coluna_hoje
     """
     if dados_atuais:
         cabecalho = list(dados_atuais[0])
-        if "Escola" not in cabecalho or "IP do NVR" not in cabecalho:
+        # Cabeçalho repetido (ex.: duas colunas sem título) faria uma coluna sobrescrever a outra.
+        if (
+            "Escola" not in cabecalho
+            or "IP do NVR" not in cabecalho
+            or len(set(cabecalho)) != len(cabecalho)
+        ):
             raise CabecalhoInesperado(cabecalho)
         registros = [
             dict(zip(cabecalho, linha + [""] * (len(cabecalho) - len(linha))))
