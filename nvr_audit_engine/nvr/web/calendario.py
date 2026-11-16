@@ -47,6 +47,11 @@ def candidatos_seletor_calendario(tipo: str, indice: int):
     return candidatos
 
 
+def _textos(opcoes) -> list[str]:
+    # Item a item: o ExtJS do 4.002 sobrescreve window.Map e quebra a leitura em lote.
+    return [(opcoes.nth(i).text_content() or "").strip() for i in range(opcoes.count())]
+
+
 def candidatos_botao_calendario_extjs():
     """Botão "Nov 2026" que abre o monthpicker; o id splitbutton-NNNN muda a cada NVR."""
     rotulo = re.compile(r"^\s*\w{3}\s+\d{4}\s*$")
@@ -87,7 +92,7 @@ def selecionar_calendario_extjs(page, ano_alvo: int, mes_num: int) -> bool:
 
     # O widget mostra uma janela de anos; navega em blocos até o ano solicitado.
     for _ in range(40):
-        anos_visiveis = [texto.strip() for texto in opcoes_ano.all_text_contents()]
+        anos_visiveis = _textos(opcoes_ano)
         if alvo_ano in anos_visiveis:
             break
         anos_validos = [int(texto) for texto in anos_visiveis if texto.isdigit()]
@@ -117,7 +122,7 @@ def selecionar_calendario_extjs(page, ano_alvo: int, mes_num: int) -> bool:
     alvo_ano_locator.first.click()
 
     alternativas_mes = meses_possiveis(mes_num)
-    textos_mes = [texto.strip().casefold() for texto in opcoes_mes.all_text_contents()]
+    textos_mes = [texto.casefold() for texto in _textos(opcoes_mes)]
     for alternativa in alternativas_mes:
         if alternativa.casefold() in textos_mes:
             opcoes_mes.filter(
@@ -157,7 +162,7 @@ def selecionar_calendario_extjs(page, ano_alvo: int, mes_num: int) -> bool:
 def selecionar_opcao(page, controle, valor: str, alternativas: list[str], descricao: str):
     tag = controle.evaluate("element => element.tagName.toLowerCase()")
     if tag == "select":
-        opcoes = controle.locator("option").all_text_contents()
+        opcoes = _textos(controle.locator("option"))
         normalizadas = {texto.strip().casefold(): texto.strip() for texto in opcoes}
         for alternativa in alternativas:
             encontrada = normalizadas.get(alternativa.casefold())

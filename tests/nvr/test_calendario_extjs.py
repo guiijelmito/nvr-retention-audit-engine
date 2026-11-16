@@ -13,6 +13,7 @@ MESES = ["Jan", "Jul", "Fev", "Ago", "Mar", "Set", "Abr", "Out", "Mai", "Nov", "
 # Botão, meses e OK copiados do NVR 172.16.4.2 (ids diferentes dos de outro NVR).
 # A coluna de anos não veio no HTML; usa a marcação padrão do ExtJS.
 HTML = """
+<script>window.Map = function () {{}};  // como o ExtJS do 4.002 faz</script>
 <a class="x-btn x-btn-split"><span id="splitbutton-1215-btnInnerEl"
   class="x-btn-inner x-btn-inner-center">Nov 2026</span></a>
 <div class="x-monthpicker">
@@ -30,10 +31,11 @@ HTML = """
   </div>
 </div>
 <script>
-  window.cliques = [];
+  // Guarda os cliques no DOM: com window.Map trocado, page.evaluate não devolve valores.
   document.addEventListener("click", e => {{
     e.preventDefault();
-    window.cliques.push(e.target.closest("a").textContent.trim());
+    const b = document.body.dataset;
+    b.cliques = (b.cliques ? b.cliques + "|" : "") + e.target.closest("a").textContent.trim();
   }});
 </script>
 """.format(
@@ -82,7 +84,7 @@ class CalendarioExtjsTests(unittest.TestCase):
     def test_seleciona_setembro_pelo_texto_e_confirma_em_ok(self):
         self.assertTrue(selecionar_calendario_extjs(self.page, 2026, 9))
         # A ordem no DOM é em colunas (Jan, Jul, Fev...): o mês tem de sair pelo texto.
-        self.assertEqual(self.page.evaluate("window.cliques"), ["2026", "Set", "OK"])
+        self.assertEqual(self.page.locator("body").get_attribute("data-cliques").split("|"), ["2026", "Set", "OK"])
 
     def test_espera_a_coluna_de_meses_aparecer(self):
         # No Alex Honório (16/11) a coluna de meses ficou visível depois da de anos.
@@ -93,7 +95,7 @@ class CalendarioExtjsTests(unittest.TestCase):
         }""")
 
         self.assertTrue(selecionar_calendario_extjs(self.page, 2026, 10))
-        self.assertEqual(self.page.evaluate("window.cliques"), ["2026", "Out", "OK"])
+        self.assertEqual(self.page.locator("body").get_attribute("data-cliques").split("|"), ["2026", "Out", "OK"])
 
 
 if __name__ == "__main__":
